@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '/Helping_Files/app_location.dart';
 
 /// Standalone onboarding content widget.
 /// No main() / MaterialApp here — just drop <OnboardingScreen/> into
@@ -18,6 +19,36 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   String? _province;
   String? _city;
   String? _area;
+
+  void _onContinue() async {
+    // Basic guard — don't let them proceed with an incomplete address.
+    if (_selectedOption == 0 || _province == null || _city == null || _area == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please complete all fields before continuing.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    // Updates AppLocation.current / AppLocation.utility live (so
+    // LocationRow on Home/Report reflects it instantly) AND persists it
+    // to local storage — no address map to build or pass through
+    // Navigator arguments anywhere.
+    await AppLocation.set(
+      utility: _selectedOption == 1 ? 'Electricity' : 'Gas',
+      province: _province!,
+      city: _city!,
+      area: _area!,
+    );
+
+    if (!mounted) return;
+
+    // pushReplacementNamed so onboarding is removed from the back stack —
+    // the user should never be able to swipe/back into it again.
+    Navigator.pushReplacementNamed(context, '/home');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,7 +77,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               ),
               const SizedBox(height: 14),
 
-              // ---------- Gas and Electricity CHOICE ----------
+              // ---------- TWO-ITEM CHOICE ----------
               Row(
                 children: [
                   Expanded(
@@ -93,7 +124,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               _LocationDropdown(
                 label: 'City',
                 value: _city,
-                items: const ['Lahore', 'Sialkot', 'Quetta', 'Faisalabad', 'Peshawar', 'Hyderabad'],
+                items: const ['Lahore', 'Karachi', 'Islamabad', 'Sialkot'],
                 onChanged: (v) => setState(() => _city = v),
               ),
               const SizedBox(height: 12),
@@ -118,9 +149,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       borderRadius: BorderRadius.circular(10),
                     ),
                   ),
-                  onPressed: () {
-                    // Hook up navigation / callback here
-                  },
+                  onPressed: _onContinue,
                   child: const Text(
                     'Continue',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),

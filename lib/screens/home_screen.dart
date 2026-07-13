@@ -6,6 +6,7 @@ import '/Helping_Files/bottom_nav.dart';
 import '/Helping_Files/location_row.dart';
 import '/Helping_Files/logo_badge.dart';
 import '/Helping_Files/app_card.dart';
+import '/Helping_Files/app_location.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -100,6 +101,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _goToReport(BuildContext context) {
+    // No arguments needed — Report reads the address from AppLocation
+    // directly, same as Home does.
     Navigator.pushNamed(context, '/report');
   }
 
@@ -219,6 +222,8 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const SizedBox(height: 2),
+            // Reactive — updates instantly the moment AppLocation.current
+            // changes anywhere in the app (e.g. right after onboarding).
             const LocationRow(),
           ],
         ),
@@ -234,42 +239,55 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: const BoxDecoration(
-                  color: AppColors.black,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.bolt_rounded,
-                  color: AppColors.white,
-                  size: 28,
-                ),
-              ),
-              const SizedBox(width: 16),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Power is ON right now',
-                      style: TextStyle(
-                        fontSize: 17.5,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.black,
-                      ),
+          // Reflects whichever utility was picked in onboarding — swaps
+          // icon + heading between Electricity/Gas automatically.
+          ValueListenableBuilder<String>(
+            valueListenable: AppLocation.utility,
+            builder: (context, utility, _) {
+              final bool isElectricity = utility == 'Electricity';
+              return Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: const BoxDecoration(
+                      color: AppColors.black,
+                      shape: BoxShape.circle,
                     ),
-                    SizedBox(height: 2),
-                    Text(
-                      'Next outage in 45 min · 5:00–7:00 PM',
-                      style: TextStyle(fontSize: 13.5, color: AppColors.grey),
+                    child: Icon(
+                      isElectricity
+                          ? Icons.bolt_rounded
+                          : Icons.local_fire_department_rounded,
+                      color: AppColors.white,
+                      size: 28,
                     ),
-                  ],
-                ),
-              ),
-            ],
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '$utility is ON right now',
+                          style: const TextStyle(
+                            fontSize: 17.5,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.black,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        const Text(
+                          'Next outage in 45 min · 5:00–7:00 PM',
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            color: AppColors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 18),
           ClipRRect(

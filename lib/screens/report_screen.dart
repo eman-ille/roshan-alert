@@ -79,6 +79,8 @@ class _ReportScreenState extends State<ReportScreen> {
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(color: AppColors.border, width: 1.5),
                 ),
+                // Reactive — same LocationRow used on Home, reads
+                // AppLocation.current directly.
                 child: const LocationRow(fontSize: 13, color: AppColors.black),
               ),
               const Text(
