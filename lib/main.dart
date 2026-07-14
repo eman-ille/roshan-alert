@@ -5,6 +5,8 @@ import 'screens/home_screen.dart';
 import 'screens/report_screen.dart';
 import 'screens/placeholder_screen.dart';
 import 'screens/onboarding_ui.dart';
+import 'screens/schedule_screen.dart';
+import 'screens/settings_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -44,9 +46,9 @@ class RoshanAlertApp extends StatelessWidget {
           title: 'Schedule',
           icon: Icons.calendar_month_rounded,
         ),
-        '/settings': (context) => const PlaceholderScreen(
-          title: 'Settings',
-          icon: Icons.settings_rounded,
+        '/settings': (context) => const SettingsScreen(
+          
+          
         ),
       },
     );

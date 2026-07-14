@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '/Helping_Files/app_location.dart';
+import 'placeholder_screen.dart';   // ← added
 
 /// Standalone onboarding content widget.
 /// No main() / MaterialApp here — just drop <OnboardingScreen/> into
@@ -32,12 +33,30 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       return;
     }
 
+    // Gas isn't built yet — send them to the shared placeholder instead
+    // of saving an address and continuing into Home. Using push (not
+    // pushReplacement) keeps onboarding underneath, so backing out
+    // lets them switch to Electricity instead of being stuck.
+    if (_selectedOption == 2) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const PlaceholderScreen(
+            title: 'Gas',
+            icon: Icons.local_fire_department_rounded,
+          ),
+        ),
+      );
+      return;
+    }
+
+    // Electricity — original flow, unchanged.
     // Updates AppLocation.current / AppLocation.utility live (so
     // LocationRow on Home/Report reflects it instantly) AND persists it
     // to local storage — no address map to build or pass through
     // Navigator arguments anywhere.
     await AppLocation.set(
-      utility: _selectedOption == 1 ? 'Electricity' : 'Gas',
+      utility: 'Electricity',
       province: _province!,
       city: _city!,
       area: _area!,
