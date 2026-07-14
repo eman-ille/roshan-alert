@@ -32,7 +32,7 @@ class RoshanAlertApp extends StatelessWidget {
       theme: appTheme, // defined once in app_theme.dart
       // Skip onboarding for anyone who already has a saved address —
       // a returning user, or simply a page refresh on Home/Report.
-      initialRoute: hasSavedAddress ? '/home' : '/onboarding',
+      initialRoute: '/home',
       routes: {
         '/onboarding': (context) => const OnboardingScreen(),
         '/home': (context) => const HomeScreen(),
@@ -46,10 +46,7 @@ class RoshanAlertApp extends StatelessWidget {
           title: 'Schedule',
           icon: Icons.calendar_month_rounded,
         ),
-        '/settings': (context) => const SettingsScreen(
-          
-          
-        ),
+        '/settings': (context) => const SettingsScreen(),
       },
     );
   }
