@@ -3,18 +3,31 @@ import '/Helping_Files/app_theme.dart';
 import '/Helping_Files/app_card.dart';
 import '/Helping_Files/bottom_nav.dart';
 import '/Helping_Files/app_location.dart';
+import '/Helping_Files/location_data.dart';
+import '/Helping_Files/location_dropdown.dart';
 import 'placeholder_screen.dart';
 
 /// Settings screen — lets the user change their saved location
 /// (Province / City / Area) and switch between Electricity / Gas.
 ///
-/// Picking "Gas" here doesn't have real settings built yet, so it
-/// just pushes the existing PlaceholderScreen on top ("Gas — Coming
-/// Soon") — same reusable placeholder already used for Schedule.
-/// Picking "Electricity" keeps this screen and lets the user edit
-/// province/city/area same as onboarding; Save persists via
-/// AppLocation.set(...) so every screen using LocationRow updates
-/// instantly, same as it does after onboarding.
+/// Tapping the Gas card only highlights it — it does NOT navigate.
+/// Gas doesn't have real settings built yet, so once the user taps
+/// "Save Changes" with Gas selected, the location is saved as normal
+/// (via AppLocation.set) and only then does the app push the existing
+/// PlaceholderScreen on top ("Gas — Coming Soon"), same reusable
+/// placeholder already used for Schedule. Saving with Electricity
+/// selected just persists and shows a "Settings saved." confirmation,
+/// same as before.
+///
+/// Province/City/Area options come from Helping_Files/location_data.dart
+/// — the same shared, real Pakistan location data Onboarding uses, so
+/// this screen and Onboarding never drift out of sync with each other.
+///
+/// The three dropdowns below use the shared LocationDropdown widget from
+/// Helping_Files/location_dropdown.dart (with `outlined: false` for the
+/// softer in-card look) instead of a private copy — this screen used to
+/// have its own near-identical `_SettingsDropdown` class, which has been
+/// removed to avoid maintaining two copies of the same cascade-lock logic.
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
@@ -39,24 +52,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _area = AppLocation.area;
   }
 
-  void _selectUtility(String value) {
-    setState(() => _utility = value);
+  // City/Area option lists depend on whatever Province/City are
+  // currently selected — same cascade rule as OnboardingScreen.
+  List<String> get _citiesForProvince => LocationData.citiesFor(_province);
+  List<String> get _areasForCity => LocationData.areasFor(_city);
 
-    if (value == 'Gas') {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const PlaceholderScreen(
-            title: 'Gas',
-            icon: Icons.local_fire_department_rounded,
-          ),
-        ),
-      ).then((_) {
-        // Coming back shouldn't leave "Gas" visually selected if
-        // nothing was actually saved for it.
-        if (mounted) setState(() => _utility = AppLocation.utility.value);
-      });
-    }
+  void _selectUtility(String value) {
+    // Just select the card visually — no navigation here. Gas only
+    // routes to the "Coming Soon" placeholder once the user actually
+    // saves, in _saveLocation() below.
+    setState(() => _utility = value);
   }
 
   Future<void> _saveLocation() async {
@@ -78,6 +83,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
 
     if (!mounted) return;
+
+    // Gas doesn't have real settings built yet. The location/utility is
+    // still saved above (so it's correctly persisted and reflected
+    // everywhere via AppLocation), but only NOW — after Save was
+    // actually pressed — do we send the user to the "Coming Soon"
+    // placeholder, instead of doing it the instant the card is tapped.
+    if (_utility == 'Gas') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const PlaceholderScreen(
+            title: 'Gas',
+            icon: Icons.local_fire_department_rounded,
+          ),
+        ),
+      );
+      return;
+    }
+
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Settings saved.'),
@@ -139,24 +163,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
               AppCard(
                 child: Column(
                   children: [
-                    _SettingsDropdown(
+                    LocationDropdown(
                       label: 'Province',
                       value: _province,
-                      items: const ['Punjab', 'Sindh', 'KPK', 'Balochistan'],
-                      onChanged: (v) => setState(() => _province = v),
+                      items: LocationData.provinces,
+                      outlined: false,
+                      onChanged: (v) => setState(() {
+                        _province = v;
+                        // A new province invalidates whatever city/area
+                        // was picked before — they belonged to the old list.
+                        _city = null;
+                        _area = null;
+                      }),
                     ),
                     const SizedBox(height: 12),
-                    _SettingsDropdown(
+                    LocationDropdown(
                       label: 'City',
                       value: _city,
-                      items: const ['Lahore', 'Karachi', 'Islamabad', 'Sialkot'],
-                      onChanged: (v) => setState(() => _city = v),
+                      items: _citiesForProvince,
+                      enabled: _province != null,
+                      disabledHint: 'Select province first',
+                      outlined: false,
+                      onChanged: (v) => setState(() {
+                        _city = v;
+                        _area = null;
+                      }),
                     ),
                     const SizedBox(height: 12),
-                    _SettingsDropdown(
+                    LocationDropdown(
                       label: 'Area',
                       value: _area,
-                      items: const ['Area 1', 'Area 2', 'Area 3'],
+                      items: _areasForCity,
+                      enabled: _city != null,
+                      disabledHint: 'Select city first',
+                      outlined: false,
                       onChanged: (v) => setState(() => _area = v),
                     ),
                   ],
@@ -228,64 +268,6 @@ class _UtilityCard extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Same dropdown look as onboarding's _LocationDropdown, minus its
-/// own outer border — AppCard already wraps all three of these in
-/// one bordered block here.
-class _SettingsDropdown extends StatelessWidget {
-  final String label;
-  final String? value;
-  final List<String> items;
-  final ValueChanged<String?> onChanged;
-
-  const _SettingsDropdown({
-    required this.label,
-    required this.value,
-    required this.items,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(AppRadius.small),
-        border: Border.all(color: AppColors.border, width: 1.2),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: value,
-          isExpanded: true,
-          icon: const Icon(Icons.keyboard_arrow_down, color: AppColors.black),
-          hint: Text(
-            label,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: AppColors.grey,
-            ),
-          ),
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: AppColors.black,
-          ),
-          dropdownColor: AppColors.white,
-          items: items
-              .map((item) => DropdownMenuItem(
-                    value: item,
-                    child: Text(item),
-                  ))
-              .toList(),
-          onChanged: onChanged,
         ),
       ),
     );

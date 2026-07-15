@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '/Helping_Files/app_location.dart';
-import 'placeholder_screen.dart';   // ← added
+import '/Helping_Files/location_data.dart';
+import '/Helping_Files/location_dropdown.dart';
+import 'placeholder_screen.dart';
 
 /// Standalone onboarding content widget.
 /// No main() / MaterialApp here — just drop <OnboardingScreen/> into
@@ -21,6 +23,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   String? _city;
   String? _area;
 
+  // Province/City/Area data now lives in Helping_Files/location_data.dart
+  // — shared with Settings, so both screens show the exact same real
+  // location list instead of maintaining two separate copies.
+  List<String> get _citiesForProvince => LocationData.citiesFor(_province);
+  List<String> get _areasForCity => LocationData.areasFor(_city);
+
   void _onContinue() async {
     // Basic guard — don't let them proceed with an incomplete address.
     if (_selectedOption == 0 || _province == null || _city == null || _area == null) {
@@ -33,30 +41,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       return;
     }
 
-    // Gas isn't built yet — send them to the shared placeholder instead
-    // of saving an address and continuing into Home. Using push (not
-    // pushReplacement) keeps onboarding underneath, so backing out
-    // lets them switch to Electricity instead of being stuck.
-    if (_selectedOption == 2) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const PlaceholderScreen(
-            title: 'Gas',
-            icon: Icons.local_fire_department_rounded,
-          ),
-        ),
-      );
-      return;
-    }
-
-    // Electricity — original flow, unchanged.
     // Updates AppLocation.current / AppLocation.utility live (so
     // LocationRow on Home/Report reflects it instantly) AND persists it
     // to local storage — no address map to build or pass through
     // Navigator arguments anywhere.
     await AppLocation.set(
-      utility: 'Electricity',
+      utility: _selectedOption == 1 ? 'Electricity' : 'Gas',
       province: _province!,
       city: _city!,
       area: _area!,
@@ -133,24 +123,44 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               const SizedBox(height: 14),
 
               // ---------- LOCATION DROPDOWNS ----------
-              _LocationDropdown(
+              // Province — always enabled, the root of the cascade.
+              LocationDropdown(
                 label: 'Province',
                 value: _province,
-                items: const ['Punjab', 'Sindh', 'KPK', 'Balochistan'],
-                onChanged: (v) => setState(() => _province = v),
+                items: LocationData.provinces,
+                onChanged: (v) => setState(() {
+                  _province = v;
+                  // Selecting a new province invalidates whatever city/area
+                  // was picked before, since they belonged to the old list.
+                  _city = null;
+                  _area = null;
+                }),
               ),
               const SizedBox(height: 12),
-              _LocationDropdown(
+
+              // City — options depend entirely on the selected province.
+              // Disabled (greyed out, unopenable) until a province exists.
+              LocationDropdown(
                 label: 'City',
                 value: _city,
-                items: const ['Lahore', 'Karachi', 'Islamabad', 'Sialkot'],
-                onChanged: (v) => setState(() => _city = v),
+                items: _citiesForProvince,
+                enabled: _province != null,
+                disabledHint: 'Select province first',
+                onChanged: (v) => setState(() {
+                  _city = v;
+                  _area = null;
+                }),
               ),
               const SizedBox(height: 12),
-              _LocationDropdown(
+
+              // Area — options depend entirely on the selected city.
+              // Disabled until a city exists.
+              LocationDropdown(
                 label: 'Area',
                 value: _area,
-                items: const ['Area 1', 'Area 2', 'Area 3'],
+                items: _areasForCity,
+                enabled: _city != null,
+                disabledHint: 'Select city first',
                 onChanged: (v) => setState(() => _area = v),
               ),
 
@@ -259,62 +269,6 @@ class _ChoiceCard extends StatelessWidget {
             fontWeight: FontWeight.w600,
             color: selected ? Colors.white : Colors.black,
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Dropdown field used for each location sub-option (Province / City / Area).
-class _LocationDropdown extends StatelessWidget {
-  final String label;
-  final String? value;
-  final List<String> items;
-  final ValueChanged<String?> onChanged;
-
-  const _LocationDropdown({
-    required this.label,
-    required this.value,
-    required this.items,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.black, width: 1.2),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: value,
-          isExpanded: true,
-          icon: const Icon(Icons.keyboard_arrow_down, color: Colors.black),
-          hint: Text(
-            label,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: Colors.black54,
-            ),
-          ),
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: Colors.black,
-          ),
-          dropdownColor: Colors.white,
-          items: items
-              .map((item) => DropdownMenuItem(
-                    value: item,
-                    child: Text(item),
-                  ))
-              .toList(),
-          onChanged: onChanged,
         ),
       ),
     );

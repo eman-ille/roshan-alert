@@ -5,7 +5,6 @@ import 'screens/home_screen.dart';
 import 'screens/report_screen.dart';
 import 'screens/placeholder_screen.dart';
 import 'screens/onboarding_ui.dart';
-import 'screens/schedule_screen.dart';
 import 'screens/settings_screen.dart';
 
 Future<void> main() async {
@@ -32,7 +31,7 @@ class RoshanAlertApp extends StatelessWidget {
       theme: appTheme, // defined once in app_theme.dart
       // Skip onboarding for anyone who already has a saved address —
       // a returning user, or simply a page refresh on Home/Report.
-      initialRoute: '/home',
+      initialRoute:  hasSavedAddress ? '/home' : '/onboarding',
       routes: {
         '/onboarding': (context) => const OnboardingScreen(),
         '/home': (context) => const HomeScreen(),
