@@ -16,8 +16,6 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // Static demo data for now — later this comes from the FastAPI backend.
-  // Each entry: hour (0-23) and status ('on' or 'off').
   static const List<Map<String, dynamic>> _todaySchedule = [
     {'hour': 0, 'status': 'on'},
     {'hour': 1, 'status': 'on'},
@@ -45,21 +43,13 @@ class _HomeScreenState extends State<HomeScreen> {
     {'hour': 23, 'status': 'on'},
   ];
 
-  // The banner message is plain widget state — no OverlayEntry involved,
-  // so it can never get orphaned or fail to reinsert.
   String? _bannerMessage;
   Timer? _bannerTimer;
 
   @override
   void initState() {
     super.initState();
-    // Whenever any screen queues a confirmation message, show it here.
     AppBanner.pendingMessage.addListener(_onPendingMessage);
-
-    // Also check for a message that was already queued BEFORE this
-    // screen was built — happens when Report navigates here via
-    // pushReplacementNamed (reached through the bottom nav tab) instead
-    // of being popped back into an existing Home screen.
     WidgetsBinding.instance.addPostFrameCallback((_) => _onPendingMessage());
   }
 
@@ -75,11 +65,10 @@ class _HomeScreenState extends State<HomeScreen> {
     final message = AppBanner.pendingMessage.value;
     if (message != null) {
       _showBanner(message);
-      AppBanner.pendingMessage.value = null; // consume it so it doesn't repeat
+      AppBanner.pendingMessage.value = null;
     }
   }
 
-  // Merge consecutive same-status hours into wide continuous segments.
   List<Map<String, dynamic>> get _segments {
     final List<Map<String, dynamic>> segments = [];
     for (final entry in _todaySchedule) {
@@ -101,14 +90,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _goToReport(BuildContext context) {
-    // No arguments needed — Report reads the address from AppLocation
-    // directly, same as Home does.
     Navigator.pushNamed(context, '/report');
   }
 
-  // Cancels any pending hide-timer, shows the message, and schedules
-  // it to disappear after 3 seconds. Calling this again while a banner
-  // is already showing simply replaces it and restarts the timer.
   void _showBanner(String message) {
     _bannerTimer?.cancel();
     setState(() => _bannerMessage = message);
@@ -120,6 +104,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Reads the current theme once per build — used to keep text that
+    // sits directly on the Scaffold background readable in both light
+    // and dark mode. Text inside AppCard doesn't need this, since
+    // AppCard keeps a fixed white background regardless of theme.
+    final onBackground = Theme.of(context).colorScheme.onSurface;
+
     return Scaffold(
       body: SafeArea(
         child: Stack(
@@ -129,16 +119,16 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildHeader(),
+                  _buildHeader(onBackground),
                   const SizedBox(height: 28),
                   _buildStatusCard(),
                   const SizedBox(height: 28),
-                  const Text(
+                  Text(
                     "Today's Schedule",
                     style: TextStyle(
                       fontSize: 19,
                       fontWeight: FontWeight.w800,
-                      color: AppColors.black,
+                      color: onBackground,
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -205,7 +195,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(Color onBackground) {
     return Row(
       children: [
         const LogoBadge(size: 44),
@@ -213,17 +203,15 @@ class _HomeScreenState extends State<HomeScreen> {
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Roshan Alert',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
-                color: AppColors.black,
+                color: onBackground,
               ),
             ),
             const SizedBox(height: 2),
-            // Reactive — updates instantly the moment AppLocation.current
-            // changes anywhere in the app (e.g. right after onboarding).
             const LocationRow(),
           ],
         ),
@@ -234,13 +222,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildStatusCard() {
     return AppCard(
       padding: const EdgeInsets.all(22),
-      borderColor:
-          AppColors.black, // this card is the "hero" — darker border on purpose
+      borderColor: AppColors.black,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Reflects whichever utility was picked in onboarding — swaps
-          // icon + heading between Electricity/Gas automatically.
           ValueListenableBuilder<String>(
             valueListenable: AppLocation.utility,
             builder: (context, utility, _) {
@@ -453,7 +438,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildReportButton(BuildContext context) {
-    // No style: block here — inherits from appTheme.elevatedButtonTheme.
     return SizedBox(
       width: double.infinity,
       height: 56,

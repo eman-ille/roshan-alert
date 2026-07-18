@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "76289614313",
+    "project_id": "roshan-alert",
+    "storage_bucket": "roshan-alert.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:76289614313:android:c835b56e619b91574eeb78",
+        "android_client_info": {
+          "package_name": "com.example.roshan_alert"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBYjiUbn6qh59sZIzSTv-WGdktZxeCJBVc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
