@@ -31,11 +31,27 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   void _onContinue() async {
     // Basic guard — don't let them proceed with an incomplete address.
-    if (_selectedOption == 0 || _province == null || _city == null || _area == null) {
+    if (_selectedOption == 0 ||
+        _province == null ||
+        _city == null ||
+        _area == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please complete all fields before continuing.'),
           behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    if (_selectedOption == 2) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const PlaceholderScreen(
+            title: 'Gas Utility',
+            icon: Icons.local_fire_department_rounded,
+          ),
         ),
       );
       return;
@@ -46,7 +62,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     // to local storage — no address map to build or pass through
     // Navigator arguments anywhere.
     await AppLocation.set(
-      utility: _selectedOption == 1 ? 'Electricity' : 'Gas',
+      utility: 'Electricity',
       province: _province!,
       city: _city!,
       area: _area!,
@@ -68,124 +84,127 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
             child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // ---------- LOGO ----------
-              const _RALogo(),
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // ---------- LOGO ----------
+                const _RALogo(),
 
-              const SizedBox(height: 44),
+                const SizedBox(height: 44),
 
-              const Text(
-                'Choose an option',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black,
-                ),
-              ),
-              const SizedBox(height: 14),
-
-              // ---------- TWO-ITEM CHOICE ----------
-              Row(
-                children: [
-                  Expanded(
-                    child: _ChoiceCard(
-                      label: 'Electricity',
-                      selected: _selectedOption == 1,
-                      onTap: () => setState(() => _selectedOption = 1),
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: _ChoiceCard(
-                      label: 'Gas',
-                      selected: _selectedOption == 2,
-                      onTap: () => setState(() => _selectedOption = 2),
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 36),
-
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Choose location by',
+                const Text(
+                  'Choose an option',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                     color: Colors.black,
                   ),
                 ),
-              ),
-              const SizedBox(height: 14),
+                const SizedBox(height: 14),
 
-              // ---------- LOCATION DROPDOWNS ----------
-              // Province — always enabled, the root of the cascade.
-              LocationDropdown(
-                label: 'Province',
-                value: _province,
-                items: LocationData.provinces,
-                onChanged: (v) => setState(() {
-                  _province = v;
-                  // Selecting a new province invalidates whatever city/area
-                  // was picked before, since they belonged to the old list.
-                  _city = null;
-                  _area = null;
-                }),
-              ),
-              const SizedBox(height: 12),
+                // ---------- TWO-ITEM CHOICE ----------
+                Row(
+                  children: [
+                    Expanded(
+                      child: _ChoiceCard(
+                        label: 'Electricity',
+                        selected: _selectedOption == 1,
+                        onTap: () => setState(() => _selectedOption = 1),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: _ChoiceCard(
+                        label: 'Gas',
+                        selected: _selectedOption == 2,
+                        onTap: () => setState(() => _selectedOption = 2),
+                      ),
+                    ),
+                  ],
+                ),
 
-              // City — options depend entirely on the selected province.
-              // Disabled (greyed out, unopenable) until a province exists.
-              LocationDropdown(
-                label: 'City',
-                value: _city,
-                items: _citiesForProvince,
-                enabled: _province != null,
-                disabledHint: 'Select province first',
-                onChanged: (v) => setState(() {
-                  _city = v;
-                  _area = null;
-                }),
-              ),
-              const SizedBox(height: 12),
+                const SizedBox(height: 36),
 
-              // Area — options depend entirely on the selected city.
-              // Disabled until a city exists.
-              LocationDropdown(
-                label: 'Area',
-                value: _area,
-                items: _areasForCity,
-                enabled: _city != null,
-                disabledHint: 'Select city first',
-                onChanged: (v) => setState(() => _area = v),
-              ),
-
-              const SizedBox(height: 44),
-
-              // ---------- CONTINUE BUTTON ----------
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.black,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Choose location by',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black,
                     ),
                   ),
-                  onPressed: _onContinue,
-                  child: const Text(
-                    'Continue',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 14),
+
+                // ---------- LOCATION DROPDOWNS ----------
+                // Province — always enabled, the root of the cascade.
+                LocationDropdown(
+                  label: 'Province',
+                  value: _province,
+                  items: LocationData.provinces,
+                  onChanged: (v) => setState(() {
+                    _province = v;
+                    // Selecting a new province invalidates whatever city/area
+                    // was picked before, since they belonged to the old list.
+                    _city = null;
+                    _area = null;
+                  }),
+                ),
+                const SizedBox(height: 12),
+
+                // City — options depend entirely on the selected province.
+                // Disabled (greyed out, unopenable) until a province exists.
+                LocationDropdown(
+                  label: 'City',
+                  value: _city,
+                  items: _citiesForProvince,
+                  enabled: _province != null,
+                  disabledHint: 'Select province first',
+                  onChanged: (v) => setState(() {
+                    _city = v;
+                    _area = null;
+                  }),
+                ),
+                const SizedBox(height: 12),
+
+                // Area — options depend entirely on the selected city.
+                // Disabled until a city exists.
+                LocationDropdown(
+                  label: 'Area',
+                  value: _area,
+                  items: _areasForCity,
+                  enabled: _city != null,
+                  disabledHint: 'Select city first',
+                  onChanged: (v) => setState(() => _area = v),
+                ),
+
+                const SizedBox(height: 44),
+
+                // ---------- CONTINUE BUTTON ----------
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.black,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    onPressed: _onContinue,
+                    child: const Text(
+                      'Continue',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
             ),
           ),
         ),
@@ -224,11 +243,7 @@ class _RALogo extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 10),
-        Container(
-          width: 28,
-          height: 2.5,
-          color: Colors.black,
-        ),
+        Container(width: 28, height: 2.5, color: Colors.black),
       ],
     );
   }
@@ -257,10 +272,7 @@ class _ChoiceCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: selected ? Colors.black : Colors.white,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: Colors.black,
-            width: selected ? 0 : 1.4,
-          ),
+          border: Border.all(color: Colors.black, width: selected ? 0 : 1.4),
         ),
         child: Text(
           label,

@@ -173,16 +173,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 trailing: AppLocation.utility.value == 'Gas'
                     ? const Icon(Icons.check_rounded)
                     : null,
-                onTap: () async {
-                  await AppLocation.set(
-                    utility: 'Gas',
-                    province: AppLocation.province ?? '',
-                    city: AppLocation.city ?? '',
-                    area: AppLocation.area ?? '',
-                  );
-                  if (sheetContext.mounted) Navigator.of(sheetContext).pop();
-                  if (!mounted) return;
-                  setState(() {});
+                onTap: () {
+                  
+                  Navigator.of(sheetContext).pop();
+                  
                   Navigator.push(
                     context,
                     MaterialPageRoute(

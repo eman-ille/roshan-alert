@@ -16,7 +16,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _forgotPasswordEmailController = TextEditingController();
 
+  bool _isSendingReset = false;
   bool _obscurePassword = true;
   bool _isLoading = false;
   bool _needsVerification = false;
@@ -26,6 +28,7 @@ class _LoginScreenState extends State<LoginScreen> {
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _forgotPasswordEmailController.dispose();
     super.dispose();
   }
 
@@ -113,6 +116,102 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _handleForgotPassword() async {
+    _forgotPasswordEmailController.text =
+        _emailController.text; // pre-fill if already typed on login screen
+    final formKey = GlobalKey<FormState>();
+
+    await showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: const Text('Reset Password'),
+              content: Form(
+                key: formKey,
+                child: TextFormField(
+                  controller: _forgotPasswordEmailController,
+                  keyboardType: TextInputType.emailAddress,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Email',
+                    hintText: 'you@example.com',
+                  ),
+                  validator:
+                      _validateEmail, // reuses the same regex check already used for login
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: _isSendingReset
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: _isSendingReset
+                      ? null
+                      : () async {
+                          if (!formKey.currentState!.validate()) return;
+                          setDialogState(() => _isSendingReset = true);
+                          try {
+                            await FirebaseAuth.instance.sendPasswordResetEmail(
+                              email: _forgotPasswordEmailController.text.trim(),
+                            );
+                            if (dialogContext.mounted) {
+                              Navigator.of(dialogContext).pop();
+                            }
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Reset link sent. Check your inbox (and spam folder).',
+                                ),
+                              ),
+                            );
+                          } on FirebaseAuthException catch (e) {
+                            String message;
+                            switch (e.code) {
+                              case 'user-not-found':
+                                message = 'No account found for that email.';
+                                break;
+                              case 'invalid-email':
+                                message = 'That email address looks invalid.';
+                                break;
+                              case 'too-many-requests':
+                                message =
+                                    'Too many attempts. Try again shortly.';
+                                break;
+                              default:
+                                message =
+                                    e.message ?? 'Could not send reset email.';
+                            }
+                            setDialogState(() => _isSendingReset = false);
+                            if (!dialogContext.mounted) return;
+                            ScaffoldMessenger.of(
+                              dialogContext,
+                            ).showSnackBar(SnackBar(content: Text(message)));
+                          } catch (e) {
+                            setDialogState(() => _isSendingReset = false);
+                          }
+                        },
+                  child: _isSendingReset
+                      ? const SizedBox(
+                          height: 16,
+                          width: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Send Reset Link'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _resendVerificationEmail() async {
     setState(() => _isResending = true);
     try {
@@ -120,7 +219,9 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Verification email sent. Check your inbox.'),
+          content: Text(
+            'Verification email sent in SPAM folder. Check your gmail.',
+          ),
         ),
       );
     } catch (e) {
@@ -154,7 +255,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const Text(
-                    'Welcome Back',
+                    'Welcome to Roshan Alert',
                     style: TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
@@ -207,9 +308,16 @@ class _LoginScreenState extends State<LoginScreen> {
                         onPressed: () {
                           setState(() => _obscurePassword = !_obscurePassword);
                         },
-                      ),
+                      ), 
                     ),
                   ),
+                  Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: _handleForgotPassword,
+                            child: const Text('Forgot Password?'),
+                          ),
+                        ),
                   const SizedBox(height: 24),
 
                   ElevatedButton(
