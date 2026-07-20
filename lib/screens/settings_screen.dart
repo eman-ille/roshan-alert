@@ -174,9 +174,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ? const Icon(Icons.check_rounded)
                     : null,
                 onTap: () {
-                  
                   Navigator.of(sheetContext).pop();
-                  
+
                   Navigator.push(
                     context,
                     MaterialPageRoute(

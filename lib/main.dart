@@ -4,9 +4,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'firebase_options.dart';
 import 'Helping_Files/app_theme.dart';
 import 'Helping_Files/app_location.dart';
+import 'Helping_Files/schedule_store.dart';
 import 'screens/home_screen.dart';
 import 'screens/report_screen.dart';
-import 'screens/placeholder_screen.dart';
+import 'screens/schedule_screen.dart';
 import 'screens/onboarding_ui.dart';
 import 'screens/settings_screen.dart';
 import 'screens/login_screen.dart';
@@ -18,6 +19,7 @@ Future<void> main() async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await AppLocation.restore();
   await AppThemeController.restore();
+  await ScheduleStore.restore();
 
   // Ask Firebase whether a session is already saved on this device.
   final User? currentUser = await FirebaseAuth.instance
@@ -58,10 +60,7 @@ class RoshanAlertApp extends StatelessWidget {
             '/onboarding': (context) => const OnboardingScreen(),
             '/home': (context) => const HomeScreen(),
             '/report': (context) => const ReportScreen(),
-            '/schedule': (context) => const PlaceholderScreen(
-              title: 'Schedule',
-              icon: Icons.calendar_month_rounded,
-            ),
+            '/schedule': (context) => const ScheduleScreen(),
             '/settings': (context) => const SettingsScreen(),
           },
         );

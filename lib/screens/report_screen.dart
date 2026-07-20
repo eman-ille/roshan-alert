@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import '/Helping_Files/app_theme.dart';
-import '/Helping_Files/app_banner.dart';
 import '/Helping_Files/bottom_nav.dart';
 import '/Helping_Files/location_row.dart';
 import '/Helping_Files/logo_badge.dart';
+import '/Helping_Files/app_location.dart';
+import '/Helping_Files/reports_store.dart';
+import '/Helping_Files/pending_report.dart';
 
 class ReportScreen extends StatefulWidget {
   const ReportScreen({super.key});
@@ -21,7 +23,7 @@ class _ReportScreenState extends State<ReportScreen> {
     setState(() => _selected = value);
   }
 
-  Future<void> _submitReport() async {
+  void _submitReport() {
     if (_selected == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -34,20 +36,25 @@ class _ReportScreenState extends State<ReportScreen> {
 
     setState(() => _submitting = true);
 
-    // Simulated network call — replace with the real FastAPI call later.
-    await Future.delayed(const Duration(milliseconds: 600));
+    final String locationKey = ReportsStore.locationKeyFor(
+      province: AppLocation.province,
+      city: AppLocation.city,
+      area: AppLocation.area,
+      utility: AppLocation.utility.value,
+    );
 
-    if (!mounted) return;
-
-    final message = _selected == 'out'
-        ? 'Thanks! You reported a power outage in your area.'
-        : 'Thanks! You reported power is back in your area.';
-
-    setState(() => _submitting = false);
-
-    // Queue the confirmation message globally, then leave this screen
-    // in whatever way is actually possible right now.
-    AppBanner.pendingMessage.value = message;
+    // Don't write to Firestore yet — this is only a preview. Home will
+    // show the new status for a few seconds and ask this same account
+    // to confirm it's actually true before anything is saved for
+    // other users to see.
+    PendingReportStore.submit(
+      status: _selected!,
+      utility: AppLocation.utility.value,
+      province: AppLocation.province,
+      city: AppLocation.city,
+      area: AppLocation.area,
+      locationKey: locationKey,
+    );
 
     if (Navigator.canPop(context)) {
       Navigator.pop(context);
