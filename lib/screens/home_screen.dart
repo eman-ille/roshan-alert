@@ -176,7 +176,11 @@ class _HomeScreenState extends State<HomeScreen> {
                         children: [
                           _buildHeader(onBackground),
                           const SizedBox(height: 28),
-                          _buildStatusCard(blocks),
+                          ValueListenableBuilder<SelfStatusOverride?>(
+                            valueListenable: UserStatusOverride.current,
+                            builder: (context, _, __) =>
+                                _buildStatusCard(blocks),
+                          ),
                           const SizedBox(height: 28),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,

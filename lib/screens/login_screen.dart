@@ -320,7 +320,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         onPressed: () {
                           setState(() => _obscurePassword = !_obscurePassword);
                         },
-                      ), 
+                      ),
                     ),
                   ),
                   Align(
@@ -362,10 +362,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           Text(
                             'Your email isn\'t verified yet. Please check your inbox for the verification link.',
                             textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: onSurface,
-                            ),
+                            style: TextStyle(fontSize: 13, color: onSurface),
                           ),
                           const SizedBox(height: 8),
                           TextButton(

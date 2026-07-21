@@ -84,7 +84,11 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     return Text(
       "These are times YOU'VE told us your $utilityWord usually goes out. "
       "We'll remind you before each one — add every block you know about.",
-      style: const TextStyle(fontSize: 13.5, color: AppColors.grey, height: 1.4),
+      style: const TextStyle(
+        fontSize: 13.5,
+        color: AppColors.grey,
+        height: 1.4,
+      ),
     );
   }
 
@@ -103,11 +107,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
               color: AppColors.black,
               shape: BoxShape.circle,
             ),
-            child: Icon(
-              blockIcon,
-              color: AppColors.white,
-              size: 20,
-            ),
+            child: Icon(blockIcon, color: AppColors.white, size: 20),
           ),
           const SizedBox(width: 14),
           Expanded(

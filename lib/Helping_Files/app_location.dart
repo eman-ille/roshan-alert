@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'address_store.dart';
 import 'schedule_store.dart';
+import 'self_status_store.dart';
 
 /// Single source of truth for the user's currently selected location
 /// AND utility type (Electricity / Gas), picked once during onboarding.
@@ -66,7 +67,13 @@ class AppLocation {
     AppLocation.current.value = '$area, $city';
 
     if (utilityChanged || locationChanged) {
+      final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+      // Each of these is scoped to the (area, utility) pair on its own
+      // — reloading BOTH here is what guarantees a brand-new area with
+      // no saved schedule shows ON, and never carries over an override
+      // reported for a different area or utility.
       await ScheduleStore.restore(utility);
+      await UserStatusOverride.switchContext(uid: uid);
     }
 
     await AddressStore.save({
