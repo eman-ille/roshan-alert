@@ -137,14 +137,16 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  String _formatMinutes(int minutes) {
-    final int h = (minutes ~/ 60) % 24;
-    final int m = minutes % 60;
-    final String period = h < 12 ? 'AM' : 'PM';
-    int displayHour = h % 12;
-    if (displayHour == 0) displayHour = 12;
-    final String mm = m.toString().padLeft(2, '0');
-    return '$displayHour:$mm $period';
+  /// Formats a span of minutes as hours+minutes once it's over an hour
+  /// (e.g. 90 -> "1h 30m", 60 -> "1h", 45 -> "45 min"), instead of ever
+  /// showing a raw three-digit minute count or a decimal-hours value.
+  /// Used everywhere on this screen a duration/countdown is shown.
+  String _formatDurationMinutes(int minutes) {
+    final int totalMinutes = minutes < 0 ? 0 : minutes;
+    if (totalMinutes < 60) return '$totalMinutes min';
+    final int h = totalMinutes ~/ 60;
+    final int m = totalMinutes % 60;
+    return m == 0 ? '${h}h' : '${h}h ${m}m';
   }
 
   void _goToReport(BuildContext context) {
@@ -244,109 +246,85 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// Status card — title line ("<Utility> should be ON/OFF now"), plus
+  /// a countdown subtitle ONLY when:
+  ///   - it's currently OFF, AND
+  ///   - that OFF is coming from the SAVED SCHEDULE (not a self-report)
+  /// A self-report has no known "back on" time, so no countdown is
+  /// ever shown alongside a reported outage.
   Widget _buildStatusCard(List<ScheduleBlock> blocks) {
     final bool hasOverride = UserStatusOverride.isActive;
     final ScheduleBlock? active = ScheduleStore.currentBlockAt(_now);
-    final ScheduleBlock? upcoming = ScheduleStore.nextBlockAfter(_now);
     final bool scheduleSaysOff = active != null;
 
     final bool isOffNow = hasOverride
         ? UserStatusOverride.isOut
         : scheduleSaysOff;
 
-    String subtitle;
-    if (hasOverride) {
-      subtitle = "Based on what you reported — not your saved schedule.";
-    } else if (isOffNow && active != null) {
+    String? subtitle;
+    if (isOffNow && !hasOverride && active != null) {
       final int minutesNow = _now.hour * 60 + _now.minute;
       final int minsLeft = active.endMinutes - minutesNow;
-      subtitle =
-          'Back on around ${_formatMinutes(active.endMinutes)} '
-          '(~$minsLeft min left), based on your schedule';
-    } else if (upcoming != null) {
-      final int minutesNow = _now.hour * 60 + _now.minute;
-      final int minsUntil = upcoming.startMinutes - minutesNow;
-      subtitle =
-          'Next scheduled outage in ~$minsUntil min · ${upcoming.timeRangeLabel}';
-    } else if (blocks.isEmpty) {
-      subtitle = 'No outage schedule saved for your area';
-    } else {
-      subtitle = 'No more outages in your saved schedule for today';
+      if (minsLeft > 0) {
+        subtitle = _formatDurationMinutes(minsLeft);
+      }
     }
-
-    final String sourceNote = hasOverride
-        ? "This reflects what YOU reported — it'll switch back to your "
-              "saved schedule at the next scheduled change."
-        : "Based on the schedule you saved — not a live reading. "
-              "If it looks wrong, report it below.";
 
     return AppCard(
       padding: const EdgeInsets.all(22),
       borderColor: AppColors.black,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ValueListenableBuilder<String>(
-            valueListenable: AppLocation.utility,
-            builder: (context, utility, _) {
-              final IconData statusIcon = isOffNow
-                  ? (utility == 'Gas'
-                        ? Icons.local_fire_department_rounded
-                        : Icons.flash_off_rounded)
-                  : (utility == 'Gas'
-                        ? Icons.local_fire_department_rounded
-                        : Icons.bolt_rounded);
+      child: ValueListenableBuilder<String>(
+        valueListenable: AppLocation.utility,
+        builder: (context, utility, _) {
+          final IconData statusIcon = isOffNow
+              ? (utility == 'Gas'
+                    ? Icons.local_fire_department_rounded
+                    : Icons.flash_off_rounded)
+              : (utility == 'Gas'
+                    ? Icons.local_fire_department_rounded
+                    : Icons.bolt_rounded);
 
-              return Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: const BoxDecoration(
-                      color: AppColors.black,
-                      shape: BoxShape.circle,
+          return Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: const BoxDecoration(
+                  color: AppColors.black,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(statusIcon, color: AppColors.white, size: 28),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isOffNow
+                          ? '$utility should be OFF now'
+                          : '$utility should be ON now',
+                      style: const TextStyle(
+                        fontSize: 17.5,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.black,
+                      ),
                     ),
-                    child: Icon(statusIcon, color: AppColors.white, size: 28),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          isOffNow
-                              ? '$utility should be OFF now'
-                              : '$utility should be ON now',
-                          style: const TextStyle(
-                            fontSize: 17.5,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.black,
-                          ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: const TextStyle(
+                          fontSize: 13.5,
+                          color: AppColors.grey,
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          subtitle,
-                          style: const TextStyle(
-                            fontSize: 13.5,
-                            color: AppColors.grey,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-          const SizedBox(height: 12),
-          Text(
-            sourceNote,
-            style: const TextStyle(
-              fontSize: 11.5,
-              color: AppColors.grey,
-              fontStyle: FontStyle.italic,
-            ),
-          ),
-        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -376,10 +354,7 @@ class _HomeScreenState extends State<HomeScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: blocks.map((block) {
         final int minutes = block.endMinutes - block.startMinutes;
-        final double hours = minutes / 60;
-        final String durationText = hours == hours.roundToDouble()
-            ? '${hours.round()} ${hours == 1 ? 'hour' : 'hours'}'
-            : '${hours.toStringAsFixed(1)} hours';
+        final String durationText = _formatDurationMinutes(minutes);
 
         return AppCard(
           margin: const EdgeInsets.only(bottom: 12),
@@ -448,10 +423,7 @@ class _HomeScreenState extends State<HomeScreen> {
       0,
       (sum, b) => sum + (b.endMinutes - b.startMinutes),
     );
-    final double totalHoursOff = totalMinutesOff / 60;
-    final String hoursLabel = totalHoursOff == totalHoursOff.roundToDouble()
-        ? '${totalHoursOff.round()} hrs'
-        : '${totalHoursOff.toStringAsFixed(1)} hrs';
+    final String hoursLabel = _formatDurationMinutes(totalMinutesOff);
 
     return Row(
       children: [

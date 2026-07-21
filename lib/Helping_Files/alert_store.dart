@@ -13,7 +13,9 @@ class AlertStore {
   static final ValueNotifier<bool> masterEnabled = ValueNotifier<bool>(true);
   static final ValueNotifier<bool> powerAlerts = ValueNotifier<bool>(true);
   static final ValueNotifier<bool> gasAlerts = ValueNotifier<bool>(true);
-  static final ValueNotifier<bool> scheduleReminders = ValueNotifier<bool>(true);
+  static final ValueNotifier<bool> scheduleReminders = ValueNotifier<bool>(
+    true,
+  );
 
   static void reset() {
     masterEnabled.value = true;
@@ -43,12 +45,14 @@ class AlertStore {
           .collection('users')
           .doc(uid)
           .get();
-      final prefsData = doc.data()?['alertPreferences'] as Map<String, dynamic>?;
+      final prefsData =
+          doc.data()?['alertPreferences'] as Map<String, dynamic>?;
       if (prefsData != null) {
         masterEnabled.value = (prefsData['masterEnabled'] as bool?) ?? true;
         powerAlerts.value = (prefsData['powerAlerts'] as bool?) ?? true;
         gasAlerts.value = (prefsData['gasAlerts'] as bool?) ?? true;
-        scheduleReminders.value = (prefsData['scheduleReminders'] as bool?) ?? true;
+        scheduleReminders.value =
+            (prefsData['scheduleReminders'] as bool?) ?? true;
         await _saveLocal();
       }
     } catch (_) {}
