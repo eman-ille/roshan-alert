@@ -26,6 +26,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String? _lastAlertedCrowdKey;
 
+  // Guards against alerting on the first snapshot of a fresh
+  // subscription (which may just be old/stale reports already sitting
+  // in the recent window) — we only want to alert on genuinely NEW
+  // signals that arrive after we've already seen the current state.
+  bool _crowdStreamPrimed = false;
+
   StreamSubscription<CrowdSignal?>? _crowdSub;
   String? _crowdSubKey;
 
@@ -44,34 +50,48 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_crowdSubKey == subKey && _crowdSub != null) return;
     _crowdSubKey = subKey;
 
+    // Fresh subscription (new area/utility/user) means a fresh
+    // priming state — don't carry over the old key.
+    _crowdStreamPrimed = false;
+    _lastAlertedCrowdKey = null;
+
     _crowdSub?.cancel();
     _crowdSub = ReportsStore.watchCrowdSignal(utility: utility, currentUid: uid)
         .listen(
           (signal) {
             if (!mounted) return;
 
-            // Fire real-time notification alert when a report arrives in this area
-            if (signal != null && signal.userCount > 0) {
-              final String uidsKey =
-                  (signal.reporterUids.toList()..sort()).join(',');
-              final signalKey = '${signal.status}-$uidsKey';
+            final String? currentKey = (signal != null && signal.userCount > 0)
+                ? '${signal.status}-'
+                      '${(signal.reporterUids.toList()..sort()).join(',')}'
+                : null;
 
-              if (!signal.hasCurrentUserReported &&
-                  signalKey != _lastAlertedCrowdKey) {
-                _lastAlertedCrowdKey = signalKey;
-                final String statusText = signal.isOut ? 'is OFF' : 'is ON';
-                final String userLabel = signal.userCount == 1
-                    ? '1 user'
-                    : '${signal.userCount} users';
+            // First snapshot after (re)connecting: just record the
+            // current state silently, don't alert on it. This avoids
+            // popping a banner for a report that's been sitting there
+            // for a while and isn't actually new news.
+            if (!_crowdStreamPrimed) {
+              _crowdStreamPrimed = true;
+              _lastAlertedCrowdKey = currentKey;
+              return;
+            }
 
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  AlertNotificationService.showAlert(
-                    title: '🚨 Roshan Alert',
-                    message: '$userLabel nearby reported $utility $statusText',
-                    utility: utility,
-                  );
-                });
-              }
+            if (signal != null &&
+                signal.userCount > 0 &&
+                currentKey != _lastAlertedCrowdKey) {
+              _lastAlertedCrowdKey = currentKey;
+              final String statusText = signal.isOut ? 'is OFF' : 'is ON';
+              final String userPrefix = signal.userCount == 1
+                  ? 'A user reported'
+                  : '${signal.userCount} users reported';
+
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                AlertNotificationService.showAlert(
+                  title: '🚨 Roshan Alert',
+                  message: '$userPrefix $utility $statusText',
+                  utility: utility,
+                );
+              });
             }
           },
           onError: (_) {

@@ -7,7 +7,6 @@ import '/Helping_Files/logo_badge.dart';
 import '/Helping_Files/app_location.dart';
 import '/Helping_Files/reports_store.dart';
 import '/Helping_Files/self_status_store.dart';
-import '/Helping_Files/alert_notification_service.dart';
 
 class ReportScreen extends StatefulWidget {
   const ReportScreen({super.key});
@@ -39,10 +38,14 @@ class _ReportScreenState extends State<ReportScreen> {
     setState(() => _submitting = true);
 
     try {
-      // This account's own Home screen updates immediately — that's
-      // handled locally below and doesn't need anyone else's OK. The
-      // Firestore row is what lets OTHER users nearby see "X user(s)
-      // in your area say..." on their own Home screens.
+      // This account's own Home screen updates immediately via
+      // UserStatusOverride.set() below — that's local and instant and
+      // doesn't need anyone else's OK, and it doesn't need its own
+      // popup banner (the user already knows what they just reported).
+      //
+      // The Firestore row written by submitReport() is what lets OTHER
+      // users nearby see "X user(s) in your area say..." on THEIR own
+      // Home screens, via their own crowd-signal stream picking it up.
       await ReportsStore.submitReport(
         status: _selected!,
         reporterUid: FirebaseAuth.instance.currentUser?.uid ?? '',
@@ -51,13 +54,18 @@ class _ReportScreenState extends State<ReportScreen> {
         area: AppLocation.area,
         utility: AppLocation.utility.value,
       );
-      await UserStatusOverride.set(_selected!, uid: FirebaseAuth.instance.currentUser?.uid ?? '');
-
-      AlertNotificationService.triggerOutageReportAlert(
-        status: _selected!,
-        utility: AppLocation.utility.value,
-        location: AppLocation.current.value,
+      await UserStatusOverride.set(
+        _selected!,
+        uid: FirebaseAuth.instance.currentUser?.uid ?? '',
       );
+
+      // NOTE: intentionally NOT calling AlertNotificationService here.
+      // Popping a "🚨 Roshan Alert" banner on the reporter's own screen
+      // right after they submit is redundant with the status card
+      // above updating instantly, and it was being confused with the
+      // banner that OTHER users see when someone else reports. Other
+      // users' banners are triggered entirely by HomeScreen's crowd
+      // signal listener picking up this Firestore write.
     } catch (e) {
       if (!mounted) return;
       setState(() => _submitting = false);
