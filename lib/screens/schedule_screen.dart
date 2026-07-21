@@ -37,21 +37,35 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
             if (blocks.isEmpty) {
               return _buildEmptyState(context);
             }
-            return ListView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
+            return Column(
               children: [
-                _buildIntro(),
-                const SizedBox(height: 18),
-                ...blocks.map((b) => _buildBlockCard(b)),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+                    children: [
+                      _buildIntro(),
+                      const SizedBox(height: 18),
+                      ...blocks.map((b) => _buildBlockCard(b)),
+                    ],
+                  ),
+                ),
+                // The only "Add outage time" button now — there used
+                // to be a second one floating over the bottom-right
+                // corner, which was redundant with this one.
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+                  child: Center(
+                    child: ElevatedButton.icon(
+                      onPressed: _addBlock,
+                      icon: const Icon(Icons.add_rounded),
+                      label: const Text('Add outage time'),
+                    ),
+                  ),
+                ),
               ],
             );
           },
         ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _addBlock,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Add outage time'),
       ),
       bottomNavigationBar: const AppBottomNav(),
     );
@@ -159,7 +173,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                 height: 1.4,
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 26),
             ElevatedButton.icon(
               onPressed: _addBlock,
               icon: const Icon(Icons.add_rounded),

@@ -42,7 +42,10 @@ final ThemeData appTheme = ThemeData(
     style: ElevatedButton.styleFrom(
       backgroundColor: AppColors.black,
       foregroundColor: AppColors.white,
-      padding: const EdgeInsets.symmetric(vertical: 16),
+      // Vertical-only padding here meant compact buttons (anything not
+      // stretched full-width) had their label sitting flush against
+      // the pill's rounded edges — added horizontal room to match.
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppRadius.medium),
       ),
@@ -99,7 +102,7 @@ final ThemeData appDarkTheme = ThemeData(
     style: ElevatedButton.styleFrom(
       backgroundColor: AppColors.white,
       foregroundColor: AppColors.black,
-      padding: const EdgeInsets.symmetric(vertical: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppRadius.medium),
       ),

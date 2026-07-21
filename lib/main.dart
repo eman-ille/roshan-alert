@@ -5,6 +5,7 @@ import 'firebase_options.dart';
 import 'Helping_Files/app_theme.dart';
 import 'Helping_Files/app_location.dart';
 import 'Helping_Files/schedule_store.dart';
+import 'Helping_Files/self_status_store.dart';
 import 'screens/home_screen.dart';
 import 'screens/report_screen.dart';
 import 'screens/schedule_screen.dart';
@@ -20,6 +21,7 @@ Future<void> main() async {
   await AppLocation.restore();
   await AppThemeController.restore();
   await ScheduleStore.restore();
+  await UserStatusOverride.restore();
 
   // Ask Firebase whether a session is already saved on this device.
   final User? currentUser = await FirebaseAuth.instance
@@ -29,10 +31,15 @@ Future<void> main() async {
   String initialRoute;
   if (currentUser == null || !currentUser.emailVerified) {
     initialRoute = '/login';
-  } else if (!AppLocation.hasSavedAddress) {
-    initialRoute = '/onboarding';
   } else {
-    initialRoute = '/home';
+    // Local cache came up empty — could just mean a new device or a
+    // reinstall, not a first-ever login. Check whether this ACCOUNT
+    // already has an address saved in Firestore before sending them
+    // to onboarding again.
+    if (!AppLocation.hasSavedAddress) {
+      await AppLocation.restoreFromCloudIfNeeded(currentUser.uid);
+    }
+    initialRoute = AppLocation.hasSavedAddress ? '/home' : '/onboarding';
   }
 
   runApp(RoshanAlertApp(initialRoute: initialRoute));

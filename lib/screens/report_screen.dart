@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '/Helping_Files/app_theme.dart';
+import '/Helping_Files/app_banner.dart';
 import '/Helping_Files/bottom_nav.dart';
 import '/Helping_Files/location_row.dart';
 import '/Helping_Files/logo_badge.dart';
 import '/Helping_Files/app_location.dart';
 import '/Helping_Files/reports_store.dart';
-import '/Helping_Files/pending_report.dart';
+import '/Helping_Files/self_status_store.dart';
 
 class ReportScreen extends StatefulWidget {
   const ReportScreen({super.key});
@@ -23,7 +25,7 @@ class _ReportScreenState extends State<ReportScreen> {
     setState(() => _selected = value);
   }
 
-  void _submitReport() {
+  Future<void> _submitReport() async {
     if (_selected == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -36,25 +38,44 @@ class _ReportScreenState extends State<ReportScreen> {
 
     setState(() => _submitting = true);
 
-    final String locationKey = ReportsStore.locationKeyFor(
-      province: AppLocation.province,
-      city: AppLocation.city,
-      area: AppLocation.area,
-      utility: AppLocation.utility.value,
-    );
+    try {
+      // This account's own Home screen updates immediately — that's
+      // handled locally below and doesn't need anyone else's OK. The
+      // Firestore row is what lets OTHER users nearby see "X user(s)
+      // in your area say..." on their own Home screens.
+      await ReportsStore.submitReport(
+        status: _selected!,
+        reporterUid: FirebaseAuth.instance.currentUser?.uid ?? '',
+        province: AppLocation.province,
+        city: AppLocation.city,
+        area: AppLocation.area,
+        utility: AppLocation.utility.value,
+      );
+      await UserStatusOverride.set(_selected!);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "Couldn't submit your report — check your connection and try again.",
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
 
-    // Don't write to Firestore yet — this is only a preview. Home will
-    // show the new status for a few seconds and ask this same account
-    // to confirm it's actually true before anything is saved for
-    // other users to see.
-    PendingReportStore.submit(
-      status: _selected!,
-      utility: AppLocation.utility.value,
-      province: AppLocation.province,
-      city: AppLocation.city,
-      area: AppLocation.area,
-      locationKey: locationKey,
-    );
+    if (!mounted) return;
+    setState(() => _submitting = false);
+
+    final message = _selected == 'out'
+        ? 'Thanks! Your Home screen now shows the power as OUT.'
+        : 'Thanks! Your Home screen now shows the power as BACK.';
+
+    // Queue the confirmation message globally, then leave this screen
+    // in whatever way is actually possible right now.
+    AppBanner.pendingMessage.value = message;
 
     if (Navigator.canPop(context)) {
       Navigator.pop(context);

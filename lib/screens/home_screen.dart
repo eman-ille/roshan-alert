@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '/Helping_Files/app_theme.dart';
 import '/Helping_Files/app_banner.dart';
 import '/Helping_Files/bottom_nav.dart';
@@ -9,7 +10,7 @@ import '/Helping_Files/app_card.dart';
 import '/Helping_Files/app_location.dart';
 import '/Helping_Files/schedule_store.dart';
 import '/Helping_Files/reports_store.dart';
-import '/Helping_Files/pending_report.dart';
+import '/Helping_Files/self_status_store.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -22,17 +23,54 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _bannerMessage;
   Timer? _bannerTimer;
 
-  // Ticks once a minute so "is it on right now" and the countdown stay
-  // accurate without the user having to reopen the screen.
+  // Ticks once a minute so "is it on right now" stays accurate, and so
+  // a self-reported override gets dropped right as the schedule
+  // crosses its next boundary, without the user having to reopen the
+  // screen.
   Timer? _clockTimer;
   DateTime _now = DateTime.now();
+
+  // Which crowd-card the user already answered (true or false) this
+  // session, so it doesn't keep reappearing for the exact same report
+  // batch. A NEW report from a different area neighbor changes the
+  // key, so it reappears with the updated count.
+  String? _respondedCrowdKey;
+  bool _confirmingCrowd = false;
+
+  // IMPORTANT: cached so the Firestore query isn't torn down and
+  // resubscribed on every rebuild (banner auto-hide, the once-a-minute
+  // clock tick, etc). StreamBuilder treats a new Stream instance as a
+  // brand new stream — for a split second while it reconnects, its
+  // data is null, which was making the crowd card flash/vanish even
+  // though nobody tapped anything. Only rebuilt if the utility (the
+  // one thing the query actually depends on) changes.
+  Stream<CrowdSignal?>? _crowdStream;
+  String? _crowdStreamCacheKey;
+
+  Stream<CrowdSignal?> _crowdStreamFor(String utility, String currentUid) {
+    final cacheKey =
+        '${AppLocation.province}|${AppLocation.city}|${AppLocation.area}|'
+        '$utility|$currentUid';
+    if (_crowdStream == null || _crowdStreamCacheKey != cacheKey) {
+      _crowdStreamCacheKey = cacheKey;
+      _crowdStream = ReportsStore.watchCrowdSignal(
+        utility: utility,
+        currentUid: currentUid,
+      );
+    }
+    return _crowdStream!;
+  }
 
   @override
   void initState() {
     super.initState();
     AppBanner.pendingMessage.addListener(_onPendingMessage);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _onPendingMessage());
-    _clockTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _onPendingMessage();
+      UserStatusOverride.clearIfStale(DateTime.now());
+    });
+    _clockTimer = Timer.periodic(const Duration(minutes: 1), (_) async {
+      await UserStatusOverride.clearIfStale(DateTime.now());
       if (mounted) setState(() => _now = DateTime.now());
     });
   }
@@ -45,25 +83,6 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  // "Yes, it's true" — writes the report for real via the store, then
-  // shows a thank-you banner. "No, revert" just clears the preview.
-  Future<void> _confirmPendingReport(PendingReport report) async {
-    try {
-      await PendingReportStore.confirm();
-      if (!mounted) return;
-      _showBanner(
-        report.isOut
-            ? 'Thanks! You reported a power outage in your area.'
-            : 'Thanks! You reported power is back in your area.',
-      );
-    } catch (e) {
-      if (!mounted) return;
-      _showBanner(
-        "Couldn't submit your report — check your connection and try again.",
-      );
-    }
-  }
-
   void _onPendingMessage() {
     if (!mounted) return;
     final message = AppBanner.pendingMessage.value;
@@ -71,6 +90,46 @@ class _HomeScreenState extends State<HomeScreen> {
       _showBanner(message);
       AppBanner.pendingMessage.value = null;
     }
+  }
+
+  // "True" on a crowd card — this account is now ALSO saying it's
+  // seeing this, so it (a) becomes another row for future neighbors'
+  // counts, and (b) updates only THIS account's own Home status.
+  Future<void> _confirmCrowdSignal(CrowdSignal crowd, String key) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    setState(() => _confirmingCrowd = true);
+    try {
+      await ReportsStore.submitReport(
+        status: crowd.status,
+        reporterUid: uid,
+        province: AppLocation.province,
+        city: AppLocation.city,
+        area: AppLocation.area,
+        utility: AppLocation.utility.value,
+      );
+      await UserStatusOverride.set(crowd.status);
+      if (!mounted) return;
+      _showBanner(
+        crowd.isOut
+            ? 'Thanks — your Home screen now shows the power as OUT.'
+            : 'Thanks — your Home screen now shows the power as BACK.',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      _showBanner("Couldn't confirm — check your connection and try again.");
+    } finally {
+      if (mounted) {
+        setState(() {
+          _confirmingCrowd = false;
+          _respondedCrowdKey = key;
+        });
+      }
+    }
+  }
+
+  // "False" — leaves this account's own status exactly as it was.
+  void _declineCrowdSignal(String key) {
+    setState(() => _respondedCrowdKey = key);
   }
 
   String _formatMinutes(int minutes) {
@@ -107,83 +166,93 @@ class _HomeScreenState extends State<HomeScreen> {
     // and dark mode. Text inside AppCard doesn't need this, since
     // AppCard keeps a fixed white background regardless of theme.
     final onBackground = Theme.of(context).colorScheme.onSurface;
+    final String currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
 
     return Scaffold(
       body: SafeArea(
-        child: ValueListenableBuilder<PendingReport?>(
-          // Reads straight from the global store — works no matter how
-          // this HomeScreen instance came to exist (fresh push, or
-          // torn down and recreated by the bottom nav's
-          // pushReplacementNamed on every tab switch).
-          valueListenable: PendingReportStore.pending,
-          builder: (context, pendingReport, _) {
-            return ValueListenableBuilder<List<ScheduleBlock>>(
-              valueListenable: ScheduleStore.blocks,
-              builder: (context, blocks, __) {
-                return ValueListenableBuilder<String>(
-                  valueListenable: AppLocation.utility,
-                  builder: (context, utility, ___) {
-                    return StreamBuilder<AreaReport?>(
-                      stream: ReportsStore.watchLatestForCurrentArea(utility),
-                      builder: (context, reportSnapshot) {
-                        final AreaReport? areaReport = reportSnapshot.data;
-                        return Stack(
-                          children: [
-                            SingleChildScrollView(
-                              padding: const EdgeInsets.fromLTRB(
-                                20,
-                                20,
-                                20,
-                                24,
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+        child: ValueListenableBuilder<List<ScheduleBlock>>(
+          valueListenable: ScheduleStore.blocks,
+          builder: (context, blocks, _) {
+            return ValueListenableBuilder<String>(
+              valueListenable: AppLocation.utility,
+              builder: (context, utility, __) {
+                return StreamBuilder<CrowdSignal?>(
+                  stream: _crowdStreamFor(utility, currentUid),
+                  builder: (context, crowdSnapshot) {
+                    final CrowdSignal? crowd = crowdSnapshot.data;
+                    // Belt-and-suspenders: even though the query
+                    // already excludes the current account, never
+                    // trust a single layer for "don't show my own
+                    // report back to me" — double-check here too.
+                    final bool crowdIsSomeoneElse =
+                        crowd != null &&
+                        currentUid.isNotEmpty &&
+                        !crowd.includesAccount(currentUid);
+                    // Even when it's genuinely someone ELSE reporting,
+                    // if it's the SAME status this account already
+                    // reported or confirmed, asking "is this true?"
+                    // again is pointless — this account already told
+                    // us. Only worth asking about a status that
+                    // DISAGREES with what this account currently shows.
+                    final bool crowdMatchesMyOwnStatus =
+                        crowd != null &&
+                        UserStatusOverride.isActive &&
+                        UserStatusOverride.status == crowd.status;
+                    final String? crowdKey = crowd == null
+                        ? null
+                        : '${crowd.status}-${crowd.userCount}-'
+                              '${crowd.latestAt.millisecondsSinceEpoch}';
+                    final bool showCrowdCard =
+                        crowdIsSomeoneElse &&
+                        !crowdMatchesMyOwnStatus &&
+                        crowdKey != _respondedCrowdKey;
+
+                    return Stack(
+                      children: [
+                        SingleChildScrollView(
+                          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildHeader(onBackground),
+                              const SizedBox(height: 28),
+                              _buildStatusCard(blocks),
+                              if (showCrowdCard) ...[
+                                const SizedBox(height: 12),
+                                _buildCrowdCard(crowd!, crowdKey!),
+                              ],
+                              const SizedBox(height: 28),
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
                                 children: [
-                                  _buildHeader(onBackground),
-                                  const SizedBox(height: 28),
-                                  _buildStatusCard(
-                                    blocks,
-                                    areaReport,
-                                    pendingReport,
+                                  Text(
+                                    'Your Saved Schedule',
+                                    style: TextStyle(
+                                      fontSize: 19,
+                                      fontWeight: FontWeight.w800,
+                                      color: onBackground,
+                                    ),
                                   ),
-                                  if (pendingReport != null) ...[
-                                    const SizedBox(height: 12),
-                                    _buildConfirmBar(pendingReport),
-                                  ],
-                                  const SizedBox(height: 28),
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        'Your Saved Schedule',
-                                        style: TextStyle(
-                                          fontSize: 19,
-                                          fontWeight: FontWeight.w800,
-                                          color: onBackground,
-                                        ),
-                                      ),
-                                      TextButton(
-                                        onPressed: () => _goToSchedule(context),
-                                        child: Text(
-                                          blocks.isEmpty ? 'Add' : 'Edit',
-                                        ),
-                                      ),
-                                    ],
+                                  TextButton(
+                                    onPressed: () => _goToSchedule(context),
+                                    child: Text(
+                                      blocks.isEmpty ? 'Add' : 'Edit',
+                                    ),
                                   ),
-                                  const SizedBox(height: 6),
-                                  _buildTimeline(context, blocks),
-                                  const SizedBox(height: 22),
-                                  _buildStatsRow(blocks),
-                                  const SizedBox(height: 28),
-                                  _buildReportButton(context),
                                 ],
                               ),
-                            ),
-                            if (_bannerMessage != null) _buildBanner(),
-                          ],
-                        );
-                      },
+                              const SizedBox(height: 6),
+                              _buildTimeline(context, blocks),
+                              const SizedBox(height: 22),
+                              _buildStatsRow(blocks),
+                              const SizedBox(height: 28),
+                              _buildReportButton(context),
+                            ],
+                          ),
+                        ),
+                        if (_bannerMessage != null) _buildBanner(),
+                      ],
                     );
                   },
                 );
@@ -267,12 +336,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildStatusCard(
-    List<ScheduleBlock> blocks,
-    AreaReport? areaReport,
-    PendingReport? pendingReport,
-  ) {
-    if (blocks.isEmpty && areaReport == null && pendingReport == null) {
+  Widget _buildStatusCard(List<ScheduleBlock> blocks) {
+    final bool hasOverride = UserStatusOverride.isActive;
+
+    if (blocks.isEmpty && !hasOverride) {
       return _buildNoScheduleCard();
     }
 
@@ -280,39 +347,19 @@ class _HomeScreenState extends State<HomeScreen> {
     final ScheduleBlock? upcoming = ScheduleStore.nextBlockAfter(_now);
     final bool scheduleSaysOff = active != null;
 
-    // A recent report is a direct observation, so it wins over the
-    // schedule guess whenever the two disagree — in EITHER direction:
-    // schedule says on but someone reported it out, or schedule says
-    // off but someone reported it's back. Older reports are ignored
-    // and we fall back to the schedule.
-    final bool hasFreshReport =
-        areaReport != null &&
-        areaReport.ageFrom(_now) <= ReportsStore.recentWindow;
-
-    // A report this same account just submitted, still waiting on
-    // confirmation, previews as if it were already true — but isn't
-    // saved anywhere yet, and reverts if not confirmed.
-    final bool hasPending = pendingReport != null;
-    final bool isOffNow = hasPending
-        ? pendingReport.isOut
-        : hasFreshReport
-        ? areaReport.isOut
+    // A self-reported status — either the user's own report, or a
+    // crowd card they confirmed as true — always wins over the
+    // schedule guess, in EITHER direction, until the next scheduled
+    // boundary resets it.
+    final bool isOffNow = hasOverride
+        ? UserStatusOverride.isOut
         : scheduleSaysOff;
 
     String subtitle;
-    if (hasPending) {
-      final int secondsLeft = pendingReport.secondsLeft;
+    if (hasOverride) {
       subtitle = isOffNow
-          ? "You just reported an outage — confirm it's true below "
-                "(auto-reverts in $secondsLeft s)"
-          : "You just reported power is back — confirm it's true below "
-                "(auto-reverts in $secondsLeft s)";
-    } else if (hasFreshReport) {
-      final int minsAgo = areaReport.ageFrom(_now).inMinutes;
-      final String agoText = minsAgo <= 1 ? 'just now' : '$minsAgo min ago';
-      subtitle = isOffNow
-          ? 'Someone in your area reported an outage $agoText'
-          : 'Someone in your area reported power is back $agoText';
+          ? "Based on what you reported — not your saved schedule."
+          : "Based on what you reported — not your saved schedule.";
     } else if (isOffNow && active != null) {
       final int minutesNow = _now.hour * 60 + _now.minute;
       final int minsLeft = active.endMinutes - minutesNow;
@@ -328,10 +375,9 @@ class _HomeScreenState extends State<HomeScreen> {
       subtitle = 'No more outages in your saved schedule for today';
     }
 
-    final String sourceNote = hasPending
-        ? "Preview only — nothing has been saved yet."
-        : hasFreshReport
-        ? "Based on a recent report from your area — not your saved schedule."
+    final String sourceNote = hasOverride
+        ? "This reflects what YOU reported — it'll switch back to your "
+              "saved schedule at the next scheduled change."
         : "Based on the schedule you saved — not a live reading. "
               "If it looks wrong, report it below.";
 
@@ -402,20 +448,27 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // Shown under the status card only while a self-submitted report is
-  // being previewed. "Yes, it's true" saves it for real; "No, revert"
-  // (or letting the countdown run out) puts Home back the way it was.
-  Widget _buildConfirmBar(PendingReport pendingReport) {
-    final bool resolving = pendingReport.resolving;
+  // "X user(s) in your area say power is back/out" — shown to everyone
+  // in the area EXCEPT whoever reported it (that's excluded upstream
+  // in ReportsStore.watchCrowdSignal). Tapping True updates only this
+  // account's own status; False (or ignoring it) leaves it unchanged.
+  Widget _buildCrowdCard(CrowdSignal crowd, String key) {
+    final String peopleLabel = crowd.userCount == 1
+        ? '1 user'
+        : '${crowd.userCount} users';
+    final String message = crowd.isOut
+        ? '$peopleLabel in your area say the power is OUT — is that true for you too?'
+        : '$peopleLabel in your area say the power is BACK — is that true for you too?';
+
     return AppCard(
       padding: const EdgeInsets.all(16),
       borderColor: AppColors.black,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Is this actually true right now?',
-            style: TextStyle(
+          Text(
+            message,
+            style: const TextStyle(
               fontSize: 14.5,
               fontWeight: FontWeight.w700,
               color: AppColors.black,
@@ -430,8 +483,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     foregroundColor: AppColors.black,
                     side: const BorderSide(color: AppColors.black, width: 1.5),
                   ),
-                  onPressed: resolving ? null : PendingReportStore.revert,
-                  child: const Text('No, revert'),
+                  onPressed: _confirmingCrowd
+                      ? null
+                      : () => _declineCrowdSignal(key),
+                  child: const Text('False'),
                 ),
               ),
               const SizedBox(width: 12),
@@ -441,10 +496,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     backgroundColor: AppColors.black,
                     foregroundColor: AppColors.white,
                   ),
-                  onPressed: resolving
+                  onPressed: _confirmingCrowd
                       ? null
-                      : () => _confirmPendingReport(pendingReport),
-                  child: resolving
+                      : () => _confirmCrowdSignal(crowd, key),
+                  child: _confirmingCrowd
                       ? const SizedBox(
                           height: 18,
                           width: 18,
@@ -453,7 +508,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             valueColor: AlwaysStoppedAnimation(AppColors.white),
                           ),
                         )
-                      : const Text("Yes, it's true"),
+                      : const Text('True'),
                 ),
               ),
             ],

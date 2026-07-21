@@ -163,4 +163,31 @@ class ScheduleStore {
     upcoming.sort((a, b) => a.startMinutes.compareTo(b.startMinutes));
     return upcoming.first;
   }
+
+  /// The next moment (as an absolute DateTime) at which any saved
+  /// block starts or ends, coming strictly after [from]. Used to know
+  /// when a self-reported status override has gone stale and the
+  /// schedule should take back over. Returns null if there's no saved
+  /// schedule at all.
+  static DateTime? nextBoundaryAfter(DateTime from) {
+    if (blocks.value.isEmpty) return null;
+
+    final int fromMinutes = from.hour * 60 + from.minute;
+    final Set<int> boundaryMinutes = {};
+    for (final b in blocks.value) {
+      boundaryMinutes.add(b.startMinutes % 1440);
+      boundaryMinutes.add(b.endMinutes % 1440);
+    }
+
+    final sorted = boundaryMinutes.toList()..sort();
+    final todayMidnight = DateTime(from.year, from.month, from.day);
+
+    for (final m in sorted) {
+      if (m > fromMinutes) {
+        return todayMidnight.add(Duration(minutes: m));
+      }
+    }
+    // Nothing left today — wrap to the earliest boundary tomorrow.
+    return todayMidnight.add(Duration(days: 1, minutes: sorted.first));
+  }
 }
