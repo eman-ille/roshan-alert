@@ -23,12 +23,14 @@ class CrowdSignal {
   // independent "is this actually someone else?" check right before
   // rendering, instead of trusting the query filter alone.
   final Set<String> reporterUids;
+  final bool hasCurrentUserReported;
 
   const CrowdSignal({
     required this.status,
     required this.userCount,
     required this.latestAt,
     required this.reporterUids,
+    required this.hasCurrentUserReported,
   });
 
   bool get isOut => status == 'out';
@@ -123,6 +125,7 @@ class ReportsStore {
         .limit(50)
         .snapshots()
         .map((snapshot) {
+          bool hasCurrentUserReported = false;
           // Keep only each OTHER reporter's most recent row (docs are
           // already newest-first), so one chatty account can't inflate
           // the count, and current-user's own rows never count.
@@ -130,6 +133,9 @@ class ReportsStore {
           for (final doc in snapshot.docs) {
             final data = doc.data();
             final uid = data['reporterUid'] as String?;
+            if (uid != null && uid.isNotEmpty && uid == currentUid) {
+              hasCurrentUserReported = true;
+            }
             if (uid == null || uid.isEmpty || uid == currentUid) continue;
             if (latestByUid.containsKey(uid)) continue;
 
@@ -176,6 +182,7 @@ class ReportsStore {
             userCount: counts[leadingStatus]!,
             latestAt: latestPerStatus[leadingStatus]!,
             reporterUids: uidsPerStatus[leadingStatus]!,
+            hasCurrentUserReported: hasCurrentUserReported,
           );
         });
   }

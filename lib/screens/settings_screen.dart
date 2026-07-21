@@ -4,9 +4,11 @@ import '/Helping_Files/app_theme.dart';
 import '/Helping_Files/app_card.dart';
 import '/Helping_Files/bottom_nav.dart';
 import '/Helping_Files/app_location.dart';
+import '/Helping_Files/address_store.dart';
+import '/Helping_Files/schedule_store.dart';
+import '/Helping_Files/self_status_store.dart';
 import '/Helping_Files/location_data.dart';
 import '/Helping_Files/location_dropdown.dart';
-import 'placeholder_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -21,9 +23,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _draftProvince;
   String? _draftCity;
   String? _draftArea;
-
-  List<String> get _citiesForProvince => LocationData.citiesFor(_draftProvince);
-  List<String> get _areasForCity => LocationData.areasFor(_draftCity);
 
   Future<void> _openLocationSheet() async {
     _draftProvince = AppLocation.province;
@@ -112,8 +111,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           city: _draftCity!,
                           area: _draftArea!,
                         );
-                        if (sheetContext.mounted)
+                        if (sheetContext.mounted) {
                           Navigator.of(sheetContext).pop();
+                        }
                         if (!mounted) return;
                         setState(() {});
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -173,18 +173,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 trailing: AppLocation.utility.value == 'Gas'
                     ? const Icon(Icons.check_rounded)
                     : null,
-                onTap: () {
-                  Navigator.of(sheetContext).pop();
-
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const PlaceholderScreen(
-                        title: 'Gas',
-                        icon: Icons.local_fire_department_rounded,
-                      ),
-                    ),
+                onTap: () async {
+                  await AppLocation.set(
+                    utility: 'Gas',
+                    province: AppLocation.province ?? '',
+                    city: AppLocation.city ?? '',
+                    area: AppLocation.area ?? '',
                   );
+                  if (sheetContext.mounted) Navigator.of(sheetContext).pop();
+                  if (mounted) setState(() {});
                 },
               ),
               const SizedBox(height: 8),
@@ -384,6 +381,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
 
     if (confirm == true) {
+      ScheduleStore.reset();
+      AppLocation.reset();
+      await UserStatusOverride.clear();
+      await AddressStore.clear();
       await FirebaseAuth.instance.signOut();
       if (!mounted) return;
       Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);

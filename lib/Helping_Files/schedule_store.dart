@@ -55,15 +55,26 @@ class ScheduleBlock {
 class ScheduleStore {
   ScheduleStore._();
 
-  static const _prefsKey = 'ra_schedule_blocks';
+  static String _prefsKey(String? uid) =>
+      uid != null && uid.isNotEmpty ? 'ra_schedule_blocks_$uid' : 'ra_schedule_blocks';
 
   static final ValueNotifier<List<ScheduleBlock>> blocks =
       ValueNotifier<List<ScheduleBlock>>(const []);
 
-  /// Call once at app startup, same timing as AppLocation.restore().
+  static void reset() {
+    blocks.value = const [];
+  }
+
+  /// Call once at app startup or after login.
   static Future<void> restore() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || uid.isEmpty) {
+      blocks.value = const [];
+      return;
+    }
+
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_prefsKey);
+    final raw = prefs.getString(_prefsKey(uid));
     if (raw != null) {
       final List decoded = jsonDecode(raw) as List;
       blocks.value =
@@ -71,12 +82,12 @@ class ScheduleStore {
               .map((e) => ScheduleBlock.fromJson(e as Map<String, dynamic>))
               .toList()
             ..sort((a, b) => a.startMinutes.compareTo(b.startMinutes));
+    } else {
+      blocks.value = const [];
     }
 
     // Firestore is the cross-device source of truth when signed in —
     // if it has data, it wins over whatever's cached locally.
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
     try {
       final doc = await FirebaseFirestore.instance
           .collection('users')
@@ -91,7 +102,7 @@ class ScheduleStore {
                 )
                 .toList()
               ..sort((a, b) => a.startMinutes.compareTo(b.startMinutes));
-        await _saveLocal();
+        await _saveLocal(uid);
       }
     } catch (_) {
       // Offline or not signed in yet — local cache above already applied.
@@ -118,25 +129,22 @@ class ScheduleStore {
   }
 
   static Future<void> _persist() async {
-    await _saveLocal();
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
+    await _saveLocal(uid);
+    if (uid == null || uid.isEmpty) return;
     try {
       await FirebaseFirestore.instance.collection('users').doc(uid).set({
         'scheduleBlocks': blocks.value.map((b) => b.toJson()).toList(),
       }, SetOptions(merge: true));
     } catch (_) {
-      // Firestore write failed (offline etc.) — local copy is already
-      // saved, so nothing is lost; it'll sync next time restore() runs
-      // and Firestore is reachable... for a real app you'd want a retry
-      // queue here, but that's beyond today's scope.
+      // Offline write failed
     }
   }
 
-  static Future<void> _saveLocal() async {
+  static Future<void> _saveLocal(String? uid) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
-      _prefsKey,
+      _prefsKey(uid),
       jsonEncode(blocks.value.map((b) => b.toJson()).toList()),
     );
   }

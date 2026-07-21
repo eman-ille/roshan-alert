@@ -69,9 +69,12 @@ class _ReportScreenState extends State<ReportScreen> {
     if (!mounted) return;
     setState(() => _submitting = false);
 
+    final String currentUtility = AppLocation.utility.value;
+    final String labelWord = currentUtility == 'Gas' ? 'Gas' : 'the power';
+
     final message = _selected == 'out'
-        ? 'Thanks! Your Home screen now shows the power as OUT.'
-        : 'Thanks! Your Home screen now shows the power as BACK.';
+        ? 'Thanks! Your Home screen now shows $labelWord as OUT.'
+        : 'Thanks! Your Home screen now shows $labelWord as BACK.';
 
     // Queue the confirmation message globally, then leave this screen
     // in whatever way is actually possible right now.
@@ -151,12 +154,18 @@ class _ReportScreenState extends State<ReportScreen> {
   // "Electricity / Gas" selector — solid black when selected,
   // outlined when not.
   Widget _buildToggle() {
-    return Row(
-      children: [
-        Expanded(child: _toggleOption('out', 'Power is OUT')),
-        const SizedBox(width: 12),
-        Expanded(child: _toggleOption('back', 'Power is BACK')),
-      ],
+    return ValueListenableBuilder<String>(
+      valueListenable: AppLocation.utility,
+      builder: (context, utility, _) {
+        final String labelWord = utility == 'Gas' ? 'Gas' : 'Power';
+        return Row(
+          children: [
+            Expanded(child: _toggleOption('out', '$labelWord is OUT')),
+            const SizedBox(width: 12),
+            Expanded(child: _toggleOption('back', '$labelWord is BACK')),
+          ],
+        );
+      },
     );
   }
 

@@ -48,6 +48,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _crowdStreamCacheKey;
 
   Stream<CrowdSignal?> _crowdStreamFor(String utility, String currentUid) {
+    if (currentUid.isEmpty) return Stream.value(null);
     final cacheKey =
         '${AppLocation.province}|${AppLocation.city}|${AppLocation.area}|'
         '$utility|$currentUid';
@@ -175,7 +176,7 @@ class _HomeScreenState extends State<HomeScreen> {
           builder: (context, blocks, _) {
             return ValueListenableBuilder<String>(
               valueListenable: AppLocation.utility,
-              builder: (context, utility, __) {
+              builder: (context, utility, _) {
                 return StreamBuilder<CrowdSignal?>(
                   stream: _crowdStreamFor(utility, currentUid),
                   builder: (context, crowdSnapshot) {
@@ -204,6 +205,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               '${crowd.latestAt.millisecondsSinceEpoch}';
                     final bool showCrowdCard =
                         crowdIsSomeoneElse &&
+                        !crowd.hasCurrentUserReported &&
                         !crowdMatchesMyOwnStatus &&
                         crowdKey != _respondedCrowdKey;
 
@@ -219,7 +221,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               _buildStatusCard(blocks),
                               if (showCrowdCard) ...[
                                 const SizedBox(height: 12),
-                                _buildCrowdCard(crowd!, crowdKey!),
+                                _buildCrowdCard(crowd, crowdKey!),
                               ],
                               const SizedBox(height: 28),
                               Row(

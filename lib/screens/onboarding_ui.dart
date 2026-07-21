@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 import '/Helping_Files/app_location.dart';
 import '/Helping_Files/location_data.dart';
 import '/Helping_Files/location_dropdown.dart';
-import 'placeholder_screen.dart';
 
 /// Standalone onboarding content widget.
-/// No main() / MaterialApp here — just drop <OnboardingScreen/> into
+/// No main() / MaterialApp here — just drop OnboardingScreen into
 /// your app's navigation wherever you need it.
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -44,25 +43,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       return;
     }
 
-    if (_selectedOption == 2) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const PlaceholderScreen(
-            title: 'Gas Utility',
-            icon: Icons.local_fire_department_rounded,
-          ),
-        ),
-      );
-      return;
-    }
+    final String chosenUtility = _selectedOption == 2 ? 'Gas' : 'Electricity';
 
-    // Updates AppLocation.current / AppLocation.utility live (so
-    // LocationRow on Home/Report reflects it instantly) AND persists it
-    // to local storage — no address map to build or pass through
-    // Navigator arguments anywhere.
     await AppLocation.set(
-      utility: 'Electricity',
+      utility: chosenUtility,
       province: _province!,
       city: _city!,
       area: _area!,
@@ -70,8 +54,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
     if (!mounted) return;
 
-    // pushReplacementNamed so onboarding is removed from the back stack —
-    // the user should never be able to swipe/back into it again.
     Navigator.pushReplacementNamed(context, '/home');
   }
 

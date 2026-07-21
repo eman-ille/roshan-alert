@@ -146,6 +146,8 @@ class _SignupScreenState extends State<SignupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Sign Up')),
       body: SafeArea(
@@ -156,12 +158,12 @@ class _SignupScreenState extends State<SignupScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text(
+                Text(
                   'Create Account',
                   style: TextStyle(
                     fontSize: 26,
                     fontWeight: FontWeight.bold,
-                    color: AppColors.black,
+                    color: onSurface,
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -169,14 +171,12 @@ class _SignupScreenState extends State<SignupScreen> {
                 TextFormField(
                   controller: _firstNameController,
                   validator: (v) => _validateRequired(v, 'First name'),
-                  style: const TextStyle(color: AppColors.black),
                   decoration: const InputDecoration(labelText: 'First Name *'),
                 ),
                 const SizedBox(height: 16),
 
                 TextFormField(
                   controller: _middleNameController,
-                  style: const TextStyle(color: AppColors.black),
                   decoration: const InputDecoration(
                     labelText: 'Middle Name (optional)',
                   ),
@@ -186,7 +186,6 @@ class _SignupScreenState extends State<SignupScreen> {
                 TextFormField(
                   controller: _lastNameController,
                   validator: (v) => _validateRequired(v, 'Last name'),
-                  style: const TextStyle(color: AppColors.black),
                   decoration: const InputDecoration(labelText: 'Last Name *'),
                 ),
                 const SizedBox(height: 16),
@@ -195,7 +194,6 @@ class _SignupScreenState extends State<SignupScreen> {
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
                   validator: _validateEmail,
-                  style: const TextStyle(color: AppColors.black),
                   decoration: const InputDecoration(labelText: 'Email *'),
                 ),
                 const SizedBox(height: 16),
@@ -204,7 +202,6 @@ class _SignupScreenState extends State<SignupScreen> {
                   controller: _passwordController,
                   obscureText: _obscurePassword,
                   validator: _validatePassword,
-                  style: const TextStyle(color: AppColors.black),
                   onChanged: (_) {
                     if (_confirmPasswordController.text.isNotEmpty) {
                       _formKey.currentState?.validate();
@@ -231,7 +228,6 @@ class _SignupScreenState extends State<SignupScreen> {
                   controller: _confirmPasswordController,
                   obscureText: _obscureConfirmPassword,
                   validator: _validateConfirmPassword,
-                  style: const TextStyle(color: AppColors.black),
                   decoration: InputDecoration(
                     labelText: 'Confirm Password *',
                     suffixIcon: IconButton(

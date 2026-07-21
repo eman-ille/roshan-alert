@@ -28,14 +28,20 @@ class AppLocation {
     'Electricity',
   );
 
-  // Raw components, kept individually in case a screen needs them later
-  // (e.g. pre-filling dropdowns in Settings' "change area" flow).
   static String? province;
   static String? city;
   static String? area;
 
   static bool get hasSavedAddress =>
       province != null && city != null && area != null;
+
+  static void reset() {
+    province = null;
+    city = null;
+    area = null;
+    current.value = 'Lahore — DHA Phase 5';
+    utility.value = 'Electricity';
+  }
 
   /// Called from onboarding (first time) OR Settings (to switch area
   /// later — this is a deliberate account action, never onboarding).

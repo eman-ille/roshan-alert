@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../Helping_Files/app_theme.dart';
 import '../Helping_Files/app_location.dart';
+import '../Helping_Files/schedule_store.dart';
+import '../Helping_Files/self_status_store.dart';
 import 'signup_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -75,6 +77,17 @@ class _LoginScreenState extends State<LoginScreen> {
         setState(() => _needsVerification = true);
         return;
       }
+
+      if (refreshedUser != null) {
+        AppLocation.reset();
+        ScheduleStore.reset();
+        await UserStatusOverride.clear();
+        await AppLocation.restoreFromCloudIfNeeded(refreshedUser.uid);
+        await ScheduleStore.restore();
+        await UserStatusOverride.restore();
+      }
+
+      if (!mounted) return;
 
       if (AppLocation.hasSavedAddress) {
         Navigator.of(context).pushReplacementNamed('/home');
@@ -244,6 +257,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -254,12 +269,12 @@ class _LoginScreenState extends State<LoginScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text(
+                  Text(
                     'Welcome to Roshan Alert',
                     style: TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
-                      color: AppColors.black,
+                      color: onSurface,
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -275,7 +290,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
                     validator: _validateEmail,
-                    style: const TextStyle(color: AppColors.black),
                     decoration: const InputDecoration(
                       labelText: 'Email',
                       hintText: 'you@example.com',
@@ -291,7 +305,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     controller: _passwordController,
                     obscureText: _obscurePassword,
                     validator: _validatePassword,
-                    style: const TextStyle(color: AppColors.black),
                     decoration: InputDecoration(
                       labelText: 'Password',
                       prefixIcon: const Icon(
@@ -312,12 +325,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   Align(
-                          alignment: Alignment.centerRight,
-                          child: TextButton(
-                            onPressed: _handleForgotPassword,
-                            child: const Text('Forgot Password?'),
-                          ),
-                        ),
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: _handleForgotPassword,
+                      child: const Text('Forgot Password?'),
+                    ),
+                  ),
                   const SizedBox(height: 24),
 
                   ElevatedButton(
@@ -347,12 +360,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       child: Column(
                         children: [
-                          const Text(
+                          Text(
                             'Your email isn\'t verified yet. Please check your inbox for the verification link.',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 13,
-                              color: AppColors.black,
+                              color: onSurface,
                             ),
                           ),
                           const SizedBox(height: 8),
