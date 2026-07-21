@@ -62,7 +62,21 @@ class ReportsStore {
     required String? city,
     required String? area,
     required String utility,
-  }) => '${province ?? ''}|${city ?? ''}|${area ?? ''}|$utility';
+  }) {
+    final p = (province == null || province.trim().isEmpty)
+        ? 'punjab'
+        : province.trim().toLowerCase();
+    final c = (city == null || city.trim().isEmpty)
+        ? 'lahore'
+        : city.trim().toLowerCase();
+    final a = (area == null || area.trim().isEmpty)
+        ? 'dha phase 5'
+        : area.trim().toLowerCase();
+    final u = utility.trim().isEmpty
+        ? 'electricity'
+        : utility.trim().toLowerCase();
+    return '$p|$c|$a|$u';
+  }
 
   /// Writes one report row. Used both for the Report screen's Submit
   /// button AND for a "True" tap on someone else's crowd card — either
@@ -85,9 +99,9 @@ class ReportsStore {
     await FirebaseFirestore.instance.collection('reports').add({
       'status': status, // 'out' or 'back'
       'reporterUid': reporterUid,
-      'province': province,
-      'city': city,
-      'area': area,
+      'province': province ?? 'Punjab',
+      'city': city ?? 'Lahore',
+      'area': area ?? 'DHA Phase 5',
       'utility': utility,
       'locationKey': locationKey,
       'createdAt': FieldValue.serverTimestamp(),
@@ -98,64 +112,61 @@ class ReportsStore {
   /// accounts nearby have been reporting recently, with a live count.
   /// Null once nobody else has reported anything recent, or this
   /// account has no saved area yet.
-  ///
-  /// NOTE: this needs a composite Firestore index on
-  /// (locationKey ASC, createdAt DESC). The first time it runs,
-  /// Firestore's error message includes a direct link to auto-create
-  /// it in the console — just click it.
   static Stream<CrowdSignal?> watchCrowdSignal({
     required String utility,
     required String currentUid,
   }) {
-    if (!AppLocation.hasSavedAddress) return Stream.value(null);
-
     final key = locationKeyFor(
       province: AppLocation.province,
       city: AppLocation.city,
       area: AppLocation.area,
       utility: utility,
     );
-    final cutoff = DateTime.now().subtract(recentWindow);
 
     return FirebaseFirestore.instance
         .collection('reports')
         .where('locationKey', isEqualTo: key)
-        .where('createdAt', isGreaterThan: Timestamp.fromDate(cutoff))
-        .orderBy('createdAt', descending: true)
-        .limit(50)
+        .limit(200)
         .snapshots()
         .map((snapshot) {
-          bool hasCurrentUserReported = false;
-          // Keep only each OTHER reporter's most recent row (docs are
-          // already newest-first), so one chatty account can't inflate
-          // the count, and current-user's own rows never count.
+          final cutoff = DateTime.now().subtract(recentWindow);
           final Map<String, _LatestReport> latestByUid = {};
+          final Set<String> currentUserReportedStatuses = {};
+
           for (final doc in snapshot.docs) {
             final data = doc.data();
             final uid = data['reporterUid'] as String?;
-            if (uid != null && uid.isNotEmpty && uid == currentUid) {
-              hasCurrentUserReported = true;
-            }
-            if (uid == null || uid.isEmpty || uid == currentUid) continue;
-            if (latestByUid.containsKey(uid)) continue;
-
             final ts = data['createdAt'];
-            if (ts is! Timestamp) continue;
+            final DateTime at =
+                (ts is Timestamp) ? ts.toDate() : DateTime.now();
 
-            latestByUid[uid] = _LatestReport(
-              uid: uid,
-              status: (data['status'] as String?) ?? '',
-              at: ts.toDate(),
-            );
+            if (at.isBefore(cutoff)) continue;
+            if (uid == null || uid.isEmpty) continue;
+
+            final docStatus = (data['status'] as String?) ?? '';
+            if (docStatus.isEmpty) continue;
+
+            if (currentUid.isNotEmpty && uid == currentUid) {
+              currentUserReportedStatuses.add(docStatus);
+              continue; // don't count self in crowd totals
+            }
+
+            final existing = latestByUid[uid];
+            if (existing == null || at.isAfter(existing.at)) {
+              latestByUid[uid] = _LatestReport(
+                uid: uid,
+                status: docStatus,
+                at: at,
+              );
+            }
           }
           if (latestByUid.isEmpty) return null;
 
-          // Whichever status the most distinct reporters are
-          // currently saying wins; ties go to whichever is more recent.
           final Map<String, int> counts = {};
           final Map<String, DateTime> latestPerStatus = {};
           final Map<String, Set<String>> uidsPerStatus = {};
           for (final r in latestByUid.values) {
+            if (r.status.isEmpty) continue;
             counts[r.status] = (counts[r.status] ?? 0) + 1;
             uidsPerStatus.putIfAbsent(r.status, () => <String>{}).add(r.uid);
             final existing = latestPerStatus[r.status];
@@ -163,6 +174,7 @@ class ReportsStore {
               latestPerStatus[r.status] = r.at;
             }
           }
+          if (counts.isEmpty) return null;
 
           String leadingStatus = counts.keys.first;
           for (final candidate in counts.keys) {
@@ -177,10 +189,14 @@ class ReportsStore {
             }
           }
 
+          final DateTime signalTime = latestPerStatus[leadingStatus]!;
+          final bool hasCurrentUserReported =
+              currentUserReportedStatuses.contains(leadingStatus);
+
           return CrowdSignal(
             status: leadingStatus,
             userCount: counts[leadingStatus]!,
-            latestAt: latestPerStatus[leadingStatus]!,
+            latestAt: signalTime,
             reporterUids: uidsPerStatus[leadingStatus]!,
             hasCurrentUserReported: hasCurrentUserReported,
           );

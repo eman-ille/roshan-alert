@@ -6,7 +6,7 @@ import '/Helping_Files/bottom_nav.dart';
 import '/Helping_Files/app_location.dart';
 import '/Helping_Files/address_store.dart';
 import '/Helping_Files/schedule_store.dart';
-import '/Helping_Files/self_status_store.dart';
+import '/Helping_Files/alert_store.dart';
 import '/Helping_Files/location_data.dart';
 import '/Helping_Files/location_dropdown.dart';
 
@@ -23,6 +23,90 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _draftProvince;
   String? _draftCity;
   String? _draftArea;
+
+  Future<void> _openAlertsSheet() async {
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppRadius.large),
+        ),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Alert & Notification Preferences',
+                  style: Theme.of(sheetContext).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 12),
+                ValueListenableBuilder<bool>(
+                  valueListenable: AlertStore.masterEnabled,
+                  builder: (context, master, _) {
+                    return SwitchListTile(
+                      secondary: const Icon(Icons.notifications_active_rounded),
+                      title: const Text('Master Outage Alerts'),
+                      subtitle: const Text(
+                        'Receive notifications for outages and restorations',
+                      ),
+                      value: master,
+                      onChanged: (val) => AlertStore.setMaster(val),
+                    );
+                  },
+                ),
+                const Divider(height: 1),
+                ValueListenableBuilder<bool>(
+                  valueListenable: AlertStore.powerAlerts,
+                  builder: (context, power, _) {
+                    return SwitchListTile(
+                      secondary: const Icon(Icons.bolt_rounded),
+                      title: const Text('Electricity Outage & Recovery Alerts'),
+                      value: power,
+                      onChanged: (val) => AlertStore.setPower(val),
+                    );
+                  },
+                ),
+                const Divider(height: 1),
+                ValueListenableBuilder<bool>(
+                  valueListenable: AlertStore.gasAlerts,
+                  builder: (context, gas, _) {
+                    return SwitchListTile(
+                      secondary: const Icon(Icons.local_fire_department_rounded),
+                      title: const Text('Gas Outage & Recovery Alerts'),
+                      value: gas,
+                      onChanged: (val) => AlertStore.setGas(val),
+                    );
+                  },
+                ),
+                const Divider(height: 1),
+                ValueListenableBuilder<bool>(
+                  valueListenable: AlertStore.scheduleReminders,
+                  builder: (context, reminders, _) {
+                    return SwitchListTile(
+                      secondary: const Icon(Icons.alarm_rounded),
+                      title: const Text('Schedule Outage Reminders'),
+                      subtitle: const Text(
+                        'Remind before scheduled outages start',
+                      ),
+                      value: reminders,
+                      onChanged: (val) => AlertStore.setScheduleReminders(val),
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   Future<void> _openLocationSheet() async {
     _draftProvince = AppLocation.province;
@@ -383,7 +467,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (confirm == true) {
       ScheduleStore.reset();
       AppLocation.reset();
-      await UserStatusOverride.clear();
+      AlertStore.reset();
       await AddressStore.clear();
       await FirebaseAuth.instance.signOut();
       if (!mounted) return;
@@ -446,6 +530,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     },
                   ),
                 ],
+              ),
+            ),
+            const SizedBox(height: 28),
+
+            _SectionLabel('ALERTS & NOTIFICATIONS'),
+            AppCard(
+              padding: EdgeInsets.zero,
+              child: _SettingsRow(
+                icon: Icons.notifications_active_rounded,
+                label: 'Alert & Notification Preferences',
+                onTap: _openAlertsSheet,
               ),
             ),
             const SizedBox(height: 28),

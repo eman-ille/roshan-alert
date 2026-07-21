@@ -33,8 +33,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         child: ValueListenableBuilder<String>(
           valueListenable: AppLocation.utility,
           builder: (context, utility, _) {
-            final String utilityWord = utility == 'Gas' ? 'gas' : 'power';
-            final String titleWord = utility == 'Gas' ? 'Gas' : 'Power';
+            final String utilityWord = utility == 'Gas' ? 'gas' : 'electricity';
+            final String titleWord = utility == 'Gas' ? 'Gas' : 'Electricity';
             final IconData blockIcon = utility == 'Gas'
                 ? Icons.local_fire_department_rounded
                 : Icons.flash_off_rounded;

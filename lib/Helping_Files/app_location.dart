@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'address_store.dart';
+import 'schedule_store.dart';
 
 /// Single source of truth for the user's currently selected location
 /// AND utility type (Electricity / Gas), picked once during onboarding.
@@ -54,11 +55,19 @@ class AppLocation {
     required String city,
     required String area,
   }) async {
+    final bool utilityChanged = AppLocation.utility.value != utility;
+    final bool locationChanged =
+        AppLocation.city != city || AppLocation.area != area;
+
     AppLocation.province = province;
     AppLocation.city = city;
     AppLocation.area = area;
     AppLocation.utility.value = utility;
     AppLocation.current.value = '$area, $city';
+
+    if (utilityChanged || locationChanged) {
+      await ScheduleStore.restore(utility);
+    }
 
     await AddressStore.save({
       'utility': utility,

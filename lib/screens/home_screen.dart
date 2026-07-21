@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '/Helping_Files/app_theme.dart';
-import '/Helping_Files/app_banner.dart';
 import '/Helping_Files/bottom_nav.dart';
 import '/Helping_Files/location_row.dart';
 import '/Helping_Files/logo_badge.dart';
@@ -11,6 +10,8 @@ import '/Helping_Files/app_location.dart';
 import '/Helping_Files/schedule_store.dart';
 import '/Helping_Files/reports_store.dart';
 import '/Helping_Files/self_status_store.dart';
+import '/Helping_Files/alert_store.dart';
+import '/Helping_Files/alert_notification_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -20,121 +21,100 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  String? _bannerMessage;
-  Timer? _bannerTimer;
-
-  // Ticks once a minute so "is it on right now" stays accurate, and so
-  // a self-reported override gets dropped right as the schedule
-  // crosses its next boundary, without the user having to reopen the
-  // screen.
   Timer? _clockTimer;
   DateTime _now = DateTime.now();
 
-  // Which crowd-card the user already answered (true or false) this
-  // session, so it doesn't keep reappearing for the exact same report
-  // batch. A NEW report from a different area neighbor changes the
-  // key, so it reappears with the updated count.
-  String? _respondedCrowdKey;
-  bool _confirmingCrowd = false;
+  String? _lastAlertedCrowdKey;
 
-  // IMPORTANT: cached so the Firestore query isn't torn down and
-  // resubscribed on every rebuild (banner auto-hide, the once-a-minute
-  // clock tick, etc). StreamBuilder treats a new Stream instance as a
-  // brand new stream — for a split second while it reconnects, its
-  // data is null, which was making the crowd card flash/vanish even
-  // though nobody tapped anything. Only rebuilt if the utility (the
-  // one thing the query actually depends on) changes.
-  Stream<CrowdSignal?>? _crowdStream;
-  String? _crowdStreamCacheKey;
+  StreamSubscription<CrowdSignal?>? _crowdSub;
+  String? _crowdSubKey;
 
-  CrowdSignal? _cachedCrowdSignal;
+  StreamSubscription<User?>? _authSub;
 
-  Stream<CrowdSignal?> _crowdStreamFor(String utility, String currentUid) {
-    if (currentUid.isEmpty) return Stream.value(null);
-    final cacheKey =
-        '${AppLocation.province}|${AppLocation.city}|${AppLocation.area}|'
-        '$utility|$currentUid';
-    if (_crowdStream == null || _crowdStreamCacheKey != cacheKey) {
-      _crowdStreamCacheKey = cacheKey;
-      _crowdStream = ReportsStore.watchCrowdSignal(
-        utility: utility,
-        currentUid: currentUid,
-      );
-    }
-    return _crowdStream!;
+  void _reconnectCrowdStream() {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    if (uid.isEmpty) return; // Wait for Firebase Auth to resolve
+
+    final utility = AppLocation.utility.value;
+    final province = AppLocation.province ?? '';
+    final city = AppLocation.city ?? '';
+    final area = AppLocation.area ?? '';
+    final subKey = '$province|$city|$area|$utility|$uid';
+
+    if (_crowdSubKey == subKey && _crowdSub != null) return;
+    _crowdSubKey = subKey;
+
+    _crowdSub?.cancel();
+    _crowdSub = ReportsStore.watchCrowdSignal(utility: utility, currentUid: uid)
+        .listen(
+          (signal) {
+            if (!mounted) return;
+
+            // Fire real-time notification alert when a report arrives in this area
+            if (signal != null && signal.userCount > 0) {
+              final String uidsKey =
+                  (signal.reporterUids.toList()..sort()).join(',');
+              final signalKey = '${signal.status}-$uidsKey';
+
+              if (!signal.hasCurrentUserReported &&
+                  signalKey != _lastAlertedCrowdKey) {
+                _lastAlertedCrowdKey = signalKey;
+                final String statusText = signal.isOut ? 'is OFF' : 'is ON';
+                final String userLabel = signal.userCount == 1
+                    ? '1 user'
+                    : '${signal.userCount} users';
+
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  AlertNotificationService.showAlert(
+                    title: '🚨 Roshan Alert',
+                    message: '$userLabel nearby reported $utility $statusText',
+                    utility: utility,
+                  );
+                });
+              }
+            }
+          },
+          onError: (_) {
+            // Guard against network/stream exception
+          },
+        );
   }
 
   @override
   void initState() {
     super.initState();
-    AppBanner.pendingMessage.addListener(_onPendingMessage);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _onPendingMessage();
-      UserStatusOverride.clearIfStale(DateTime.now());
+
+    _reconnectCrowdStream();
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((_) {
+      _reconnectCrowdStream();
     });
+
+    AppLocation.utility.addListener(_reconnectCrowdStream);
+    AppLocation.current.addListener(_reconnectCrowdStream);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+      await UserStatusOverride.restore(uid: uid);
+      await UserStatusOverride.clearIfStale(DateTime.now(), uid: uid);
+      await AlertStore.restore();
+      if (mounted) setState(() {});
+    });
+
     _clockTimer = Timer.periodic(const Duration(minutes: 1), (_) async {
-      await UserStatusOverride.clearIfStale(DateTime.now());
+      final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+      await UserStatusOverride.clearIfStale(DateTime.now(), uid: uid);
       if (mounted) setState(() => _now = DateTime.now());
     });
   }
 
   @override
   void dispose() {
-    AppBanner.pendingMessage.removeListener(_onPendingMessage);
-    _bannerTimer?.cancel();
+    AppLocation.utility.removeListener(_reconnectCrowdStream);
+    AppLocation.current.removeListener(_reconnectCrowdStream);
+    _authSub?.cancel();
+    _crowdSub?.cancel();
     _clockTimer?.cancel();
     super.dispose();
-  }
-
-  void _onPendingMessage() {
-    if (!mounted) return;
-    final message = AppBanner.pendingMessage.value;
-    if (message != null) {
-      _showBanner(message);
-      AppBanner.pendingMessage.value = null;
-    }
-  }
-
-  // "True" on a crowd card — this account is now ALSO saying it's
-  // seeing this, so it (a) becomes another row for future neighbors'
-  // counts, and (b) updates only THIS account's own Home status.
-  Future<void> _confirmCrowdSignal(CrowdSignal crowd, String key) async {
-    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
-    final String utilityWord =
-        AppLocation.utility.value == 'Gas' ? 'Gas' : 'the power';
-    setState(() => _confirmingCrowd = true);
-    try {
-      await ReportsStore.submitReport(
-        status: crowd.status,
-        reporterUid: uid,
-        province: AppLocation.province,
-        city: AppLocation.city,
-        area: AppLocation.area,
-        utility: AppLocation.utility.value,
-      );
-      await UserStatusOverride.set(crowd.status);
-      if (!mounted) return;
-      _showBanner(
-        crowd.isOut
-            ? 'Thanks — your Home screen now shows $utilityWord as OUT.'
-            : 'Thanks — your Home screen now shows $utilityWord as BACK.',
-      );
-    } catch (e) {
-      if (!mounted) return;
-      _showBanner("Couldn't confirm — check your connection and try again.");
-    } finally {
-      if (mounted) {
-        setState(() {
-          _confirmingCrowd = false;
-          _respondedCrowdKey = key;
-        });
-      }
-    }
-  }
-
-  // "False" — leaves this account's own status exactly as it was.
-  void _declineCrowdSignal(String key) {
-    setState(() => _respondedCrowdKey = key);
   }
 
   String _formatMinutes(int minutes) {
@@ -155,23 +135,9 @@ class _HomeScreenState extends State<HomeScreen> {
     Navigator.pushNamed(context, '/schedule');
   }
 
-  void _showBanner(String message) {
-    _bannerTimer?.cancel();
-    setState(() => _bannerMessage = message);
-
-    _bannerTimer = Timer(const Duration(seconds: 3), () {
-      if (mounted) setState(() => _bannerMessage = null);
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
-    // Reads the current theme once per build — used to keep text that
-    // sits directly on the Scaffold background readable in both light
-    // and dark mode. Text inside AppCard doesn't need this, since
-    // AppCard keeps a fixed white background regardless of theme.
     final onBackground = Theme.of(context).colorScheme.onSurface;
-    final String currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
 
     return Scaffold(
       body: SafeArea(
@@ -181,85 +147,45 @@ class _HomeScreenState extends State<HomeScreen> {
             return ValueListenableBuilder<String>(
               valueListenable: AppLocation.utility,
               builder: (context, utility, _) {
-                return StreamBuilder<CrowdSignal?>(
-                  stream: _crowdStreamFor(utility, currentUid),
-                  builder: (context, crowdSnapshot) {
-                    if (crowdSnapshot.hasData) {
-                      _cachedCrowdSignal = crowdSnapshot.data;
-                    }
-                    final CrowdSignal? crowd =
-                        crowdSnapshot.data ?? _cachedCrowdSignal;
-
-                    // Belt-and-suspenders: even though the query
-                    // already excludes the current account, never
-                    // trust a single layer for "don't show my own
-                    // report back to me" — double-check here too.
-                    final bool crowdIsSomeoneElse =
-                        crowd != null &&
-                        currentUid.isNotEmpty &&
-                        !crowd.includesAccount(currentUid);
-                    final bool crowdMatchesMyOwnStatus =
-                        crowd != null &&
-                        UserStatusOverride.isActive &&
-                        UserStatusOverride.status == crowd.status;
-                    final String? crowdKey = crowd == null
-                        ? null
-                        : '${crowd.status}-${crowd.userCount}-'
-                              '${crowd.latestAt.millisecondsSinceEpoch}';
-                    final bool showCrowdCard =
-                        crowdIsSomeoneElse &&
-                        !crowd.hasCurrentUserReported &&
-                        !crowdMatchesMyOwnStatus &&
-                        crowdKey != _respondedCrowdKey;
-
-                    return Stack(
-                      children: [
-                        SingleChildScrollView(
-                          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                return Stack(
+                  children: [
+                    SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildHeader(onBackground),
+                          const SizedBox(height: 28),
+                          _buildStatusCard(blocks),
+                          const SizedBox(height: 28),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              _buildHeader(onBackground),
-                              const SizedBox(height: 28),
-                              _buildStatusCard(blocks),
-                              if (showCrowdCard && crowd != null) ...[
-                                const SizedBox(height: 12),
-                                _buildCrowdCard(crowd, crowdKey!),
-                              ],
-                              const SizedBox(height: 28),
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    'Your Saved Schedule',
-                                    style: TextStyle(
-                                      fontSize: 19,
-                                      fontWeight: FontWeight.w800,
-                                      color: onBackground,
-                                    ),
-                                  ),
-                                  TextButton(
-                                    onPressed: () => _goToSchedule(context),
-                                    child: Text(
-                                      blocks.isEmpty ? 'Add' : 'Edit',
-                                    ),
-                                  ),
-                                ],
+                              Text(
+                                'Your Saved Schedule',
+                                style: TextStyle(
+                                  fontSize: 19,
+                                  fontWeight: FontWeight.w800,
+                                  color: onBackground,
+                                ),
                               ),
-                              const SizedBox(height: 6),
-                              _buildTimeline(context, blocks),
-                              const SizedBox(height: 22),
-                              _buildStatsRow(blocks),
-                              const SizedBox(height: 28),
-                              _buildReportButton(context),
+                              TextButton(
+                                onPressed: () => _goToSchedule(context),
+                                child: Text(blocks.isEmpty ? 'Add' : 'Edit'),
+                              ),
                             ],
                           ),
-                        ),
-                        if (_bannerMessage != null) _buildBanner(),
-                      ],
-                    );
-                  },
+                          const SizedBox(height: 6),
+                          _buildTimeline(context, blocks),
+                          const SizedBox(height: 22),
+                          _buildStatsRow(blocks),
+                          const SizedBox(height: 28),
+                          _buildReportButton(context),
+                        ],
+                      ),
+                    ),
+                    const HeadsUpAlertBanner(),
+                  ],
                 );
               },
             );
@@ -267,53 +193,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
       bottomNavigationBar: const AppBottomNav(),
-    );
-  }
-
-  Widget _buildBanner() {
-    return Positioned(
-      top: 8,
-      left: 0,
-      right: 0,
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 200),
-        child: Container(
-          key: ValueKey(_bannerMessage),
-          margin: const EdgeInsets.symmetric(horizontal: 20),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            color: AppColors.black,
-            borderRadius: BorderRadius.circular(AppRadius.medium),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.25),
-                blurRadius: 14,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              const Icon(
-                Icons.check_circle_rounded,
-                color: AppColors.white,
-                size: 20,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  _bannerMessage ?? '',
-                  style: const TextStyle(
-                    color: AppColors.white,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13.5,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 
@@ -388,11 +267,11 @@ class _HomeScreenState extends State<HomeScreen> {
             builder: (context, utility, _) {
               final IconData statusIcon = isOffNow
                   ? (utility == 'Gas'
-                      ? Icons.local_fire_department_rounded
-                      : Icons.flash_off_rounded)
+                        ? Icons.local_fire_department_rounded
+                        : Icons.flash_off_rounded)
                   : (utility == 'Gas'
-                      ? Icons.local_fire_department_rounded
-                      : Icons.bolt_rounded);
+                        ? Icons.local_fire_department_rounded
+                        : Icons.bolt_rounded);
 
               return Row(
                 children: [
@@ -402,11 +281,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       color: AppColors.black,
                       shape: BoxShape.circle,
                     ),
-                    child: Icon(
-                      statusIcon,
-                      color: AppColors.white,
-                      size: 28,
-                    ),
+                    child: Icon(statusIcon, color: AppColors.white, size: 28),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
@@ -452,78 +327,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // "X user(s) in your area say power/gas is back/out" — shown to everyone
-  // in the area EXCEPT whoever reported it (that's excluded upstream
-  // in ReportsStore.watchCrowdSignal). Tapping True updates only this
-  // account's own status; False (or ignoring it) leaves it unchanged.
-  Widget _buildCrowdCard(CrowdSignal crowd, String key) {
-    final String utilityWord =
-        AppLocation.utility.value == 'Gas' ? 'Gas' : 'the power';
-    final String peopleLabel = crowd.userCount == 1
-        ? '1 user'
-        : '${crowd.userCount} users';
-    final String message = crowd.isOut
-        ? '$peopleLabel in your area say $utilityWord is OUT — is that true for you too?'
-        : '$peopleLabel in your area say $utilityWord is BACK — is that true for you too?';
-
-    return AppCard(
-      padding: const EdgeInsets.all(16),
-      borderColor: AppColors.black,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            message,
-            style: const TextStyle(
-              fontSize: 14.5,
-              fontWeight: FontWeight.w700,
-              color: AppColors.black,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.black,
-                    side: const BorderSide(color: AppColors.black, width: 1.5),
-                  ),
-                  onPressed: _confirmingCrowd
-                      ? null
-                      : () => _declineCrowdSignal(key),
-                  child: const Text('False'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.black,
-                    foregroundColor: AppColors.white,
-                  ),
-                  onPressed: _confirmingCrowd
-                      ? null
-                      : () => _confirmCrowdSignal(crowd, key),
-                  child: _confirmingCrowd
-                      ? const SizedBox(
-                          height: 18,
-                          width: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            valueColor: AlwaysStoppedAnimation(AppColors.white),
-                          ),
-                        )
-                      : const Text('True'),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildTimeline(BuildContext context, List<ScheduleBlock> blocks) {
     if (blocks.isEmpty) {
       return Padding(
@@ -538,8 +341,9 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    final String utilityWord =
-        AppLocation.utility.value == 'Gas' ? 'Gas' : 'Power';
+    final String utilityWord = AppLocation.utility.value == 'Gas'
+        ? 'Gas'
+        : 'Electricity';
     final IconData blockIcon = AppLocation.utility.value == 'Gas'
         ? Icons.local_fire_department_rounded
         : Icons.flash_off_rounded;
@@ -563,11 +367,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   color: AppColors.black,
                   shape: BoxShape.circle,
                 ),
-                child: Icon(
-                  blockIcon,
-                  color: AppColors.white,
-                  size: 20,
-                ),
+                child: Icon(blockIcon, color: AppColors.white, size: 20),
               ),
               const SizedBox(width: 14),
               Expanded(

@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '/Helping_Files/app_theme.dart';
-import '/Helping_Files/app_banner.dart';
 import '/Helping_Files/bottom_nav.dart';
 import '/Helping_Files/location_row.dart';
 import '/Helping_Files/logo_badge.dart';
 import '/Helping_Files/app_location.dart';
 import '/Helping_Files/reports_store.dart';
 import '/Helping_Files/self_status_store.dart';
+import '/Helping_Files/alert_notification_service.dart';
 
 class ReportScreen extends StatefulWidget {
   const ReportScreen({super.key});
@@ -51,7 +51,13 @@ class _ReportScreenState extends State<ReportScreen> {
         area: AppLocation.area,
         utility: AppLocation.utility.value,
       );
-      await UserStatusOverride.set(_selected!);
+      await UserStatusOverride.set(_selected!, uid: FirebaseAuth.instance.currentUser?.uid ?? '');
+
+      AlertNotificationService.triggerOutageReportAlert(
+        status: _selected!,
+        utility: AppLocation.utility.value,
+        location: AppLocation.current.value,
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() => _submitting = false);
@@ -68,17 +74,6 @@ class _ReportScreenState extends State<ReportScreen> {
 
     if (!mounted) return;
     setState(() => _submitting = false);
-
-    final String currentUtility = AppLocation.utility.value;
-    final String labelWord = currentUtility == 'Gas' ? 'Gas' : 'the power';
-
-    final message = _selected == 'out'
-        ? 'Thanks! Your Home screen now shows $labelWord as OUT.'
-        : 'Thanks! Your Home screen now shows $labelWord as BACK.';
-
-    // Queue the confirmation message globally, then leave this screen
-    // in whatever way is actually possible right now.
-    AppBanner.pendingMessage.value = message;
 
     if (Navigator.canPop(context)) {
       Navigator.pop(context);
@@ -157,7 +152,7 @@ class _ReportScreenState extends State<ReportScreen> {
     return ValueListenableBuilder<String>(
       valueListenable: AppLocation.utility,
       builder: (context, utility, _) {
-        final String labelWord = utility == 'Gas' ? 'Gas' : 'Power';
+        final String labelWord = utility == 'Gas' ? 'Gas' : 'Electricity';
         return Row(
           children: [
             Expanded(child: _toggleOption('out', '$labelWord is OUT')),

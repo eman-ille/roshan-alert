@@ -81,10 +81,9 @@ class _LoginScreenState extends State<LoginScreen> {
       if (refreshedUser != null) {
         AppLocation.reset();
         ScheduleStore.reset();
-        await UserStatusOverride.clear();
         await AppLocation.restoreFromCloudIfNeeded(refreshedUser.uid);
         await ScheduleStore.restore();
-        await UserStatusOverride.restore();
+        await UserStatusOverride.restore(uid: refreshedUser.uid);
       }
 
       if (!mounted) return;

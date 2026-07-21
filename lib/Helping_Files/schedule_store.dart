@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'app_location.dart';
 
 /// One recurring daily outage block, e.g. 5:00 PM – 7:00 PM.
 /// Times are stored as "minutes since midnight" (0–1440) so comparing
@@ -55,8 +56,32 @@ class ScheduleBlock {
 class ScheduleStore {
   ScheduleStore._();
 
-  static String _prefsKey(String? uid) =>
-      uid != null && uid.isNotEmpty ? 'ra_schedule_blocks_$uid' : 'ra_schedule_blocks';
+  static String _currentUtility() =>
+      AppLocation.utility.value.isNotEmpty
+          ? AppLocation.utility.value
+          : 'Electricity';
+
+  // Location slug used in Firestore field names so each area has its
+  // own schedule. e.g. punjab_lahore_model_town
+  static String _locationSlug() {
+    final parts = [
+      AppLocation.province ?? '',
+      AppLocation.city ?? '',
+      AppLocation.area ?? '',
+    ].map((s) => s.toLowerCase().replaceAll(' ', '_')).join('_');
+    return parts.isNotEmpty ? parts : 'default';
+  }
+
+  static String _firestoreField(String utility) =>
+      'scheduleBlocks_${utility.toLowerCase()}_${_locationSlug()}';
+
+  static String _prefsKey(String? uid, [String? utility]) {
+    final utilKey = (utility ?? _currentUtility()).toLowerCase();
+    final locSlug = _locationSlug();
+    return uid != null && uid.isNotEmpty
+        ? 'ra_schedule_blocks_${uid}_${locSlug}_$utilKey'
+        : 'ra_schedule_blocks_${locSlug}_$utilKey';
+  }
 
   static final ValueNotifier<List<ScheduleBlock>> blocks =
       ValueNotifier<List<ScheduleBlock>>(const []);
@@ -65,8 +90,9 @@ class ScheduleStore {
     blocks.value = const [];
   }
 
-  /// Call once at app startup or after login.
-  static Future<void> restore() async {
+  /// Call once at app startup or after login or utility switch.
+  static Future<void> restore([String? utility]) async {
+    final activeUtility = utility ?? _currentUtility();
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null || uid.isEmpty) {
       blocks.value = const [];
@@ -74,26 +100,30 @@ class ScheduleStore {
     }
 
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_prefsKey(uid));
+    final raw = prefs.getString(_prefsKey(uid, activeUtility));
+    List<ScheduleBlock> localBlocks = [];
     if (raw != null) {
-      final List decoded = jsonDecode(raw) as List;
-      blocks.value =
-          decoded
-              .map((e) => ScheduleBlock.fromJson(e as Map<String, dynamic>))
-              .toList()
-            ..sort((a, b) => a.startMinutes.compareTo(b.startMinutes));
-    } else {
-      blocks.value = const [];
+      try {
+        final List decoded = jsonDecode(raw) as List;
+        localBlocks = decoded
+            .map((e) => ScheduleBlock.fromJson(e as Map<String, dynamic>))
+            .toList()
+          ..sort((a, b) => a.startMinutes.compareTo(b.startMinutes));
+      } catch (_) {}
     }
 
-    // Firestore is the cross-device source of truth when signed in —
-    // if it has data, it wins over whatever's cached locally.
+    // Set initial value from local cache immediately
+    blocks.value = localBlocks;
+
+    // Firestore is the cross-device source of truth when signed in.
     try {
       final doc = await FirebaseFirestore.instance
           .collection('users')
           .doc(uid)
           .get();
-      final remote = doc.data()?['scheduleBlocks'] as List?;
+      final locField = _firestoreField(activeUtility);
+      final remote = doc.data()?[locField] as List?;
+
       if (remote != null) {
         blocks.value =
             remote
@@ -102,10 +132,18 @@ class ScheduleStore {
                 )
                 .toList()
               ..sort((a, b) => a.startMinutes.compareTo(b.startMinutes));
-        await _saveLocal(uid);
+        await _saveLocal(uid, activeUtility);
+      } else if (localBlocks.isNotEmpty) {
+        // Sync local schedule to Firestore if remote doesn't have it yet
+        await FirebaseFirestore.instance.collection('users').doc(uid).set({
+          locField: localBlocks.map((b) => b.toJson()).toList(),
+        }, SetOptions(merge: true));
+      } else {
+        blocks.value = const [];
+        await _saveLocal(uid, activeUtility);
       }
     } catch (_) {
-      // Offline or not signed in yet — local cache above already applied.
+      // Offline: keep localBlocks
     }
   }
 
@@ -130,21 +168,25 @@ class ScheduleStore {
 
   static Future<void> _persist() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    await _saveLocal(uid);
+    final activeUtility = _currentUtility();
+    await _saveLocal(uid, activeUtility);
     if (uid == null || uid.isEmpty) return;
     try {
+      // Save under location-specific field so each area has its own
+      // schedule in Firestore.
+      final field = _firestoreField(activeUtility);
       await FirebaseFirestore.instance.collection('users').doc(uid).set({
-        'scheduleBlocks': blocks.value.map((b) => b.toJson()).toList(),
+        field: blocks.value.map((b) => b.toJson()).toList(),
       }, SetOptions(merge: true));
     } catch (_) {
       // Offline write failed
     }
   }
 
-  static Future<void> _saveLocal(String? uid) async {
+  static Future<void> _saveLocal(String? uid, String utility) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
-      _prefsKey(uid),
+      _prefsKey(uid, utility),
       jsonEncode(blocks.value.map((b) => b.toJson()).toList()),
     );
   }
