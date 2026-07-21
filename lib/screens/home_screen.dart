@@ -47,6 +47,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Stream<CrowdSignal?>? _crowdStream;
   String? _crowdStreamCacheKey;
 
+  CrowdSignal? _cachedCrowdSignal;
+
   Stream<CrowdSignal?> _crowdStreamFor(String utility, String currentUid) {
     if (currentUid.isEmpty) return Stream.value(null);
     final cacheKey =
@@ -98,6 +100,8 @@ class _HomeScreenState extends State<HomeScreen> {
   // counts, and (b) updates only THIS account's own Home status.
   Future<void> _confirmCrowdSignal(CrowdSignal crowd, String key) async {
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final String utilityWord =
+        AppLocation.utility.value == 'Gas' ? 'Gas' : 'the power';
     setState(() => _confirmingCrowd = true);
     try {
       await ReportsStore.submitReport(
@@ -112,8 +116,8 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       _showBanner(
         crowd.isOut
-            ? 'Thanks — your Home screen now shows the power as OUT.'
-            : 'Thanks — your Home screen now shows the power as BACK.',
+            ? 'Thanks — your Home screen now shows $utilityWord as OUT.'
+            : 'Thanks — your Home screen now shows $utilityWord as BACK.',
       );
     } catch (e) {
       if (!mounted) return;
@@ -180,7 +184,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 return StreamBuilder<CrowdSignal?>(
                   stream: _crowdStreamFor(utility, currentUid),
                   builder: (context, crowdSnapshot) {
-                    final CrowdSignal? crowd = crowdSnapshot.data;
+                    if (crowdSnapshot.hasData) {
+                      _cachedCrowdSignal = crowdSnapshot.data;
+                    }
+                    final CrowdSignal? crowd =
+                        crowdSnapshot.data ?? _cachedCrowdSignal;
+
                     // Belt-and-suspenders: even though the query
                     // already excludes the current account, never
                     // trust a single layer for "don't show my own
@@ -189,12 +198,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         crowd != null &&
                         currentUid.isNotEmpty &&
                         !crowd.includesAccount(currentUid);
-                    // Even when it's genuinely someone ELSE reporting,
-                    // if it's the SAME status this account already
-                    // reported or confirmed, asking "is this true?"
-                    // again is pointless — this account already told
-                    // us. Only worth asking about a status that
-                    // DISAGREES with what this account currently shows.
                     final bool crowdMatchesMyOwnStatus =
                         crowd != null &&
                         UserStatusOverride.isActive &&
@@ -219,7 +222,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               _buildHeader(onBackground),
                               const SizedBox(height: 28),
                               _buildStatusCard(blocks),
-                              if (showCrowdCard) ...[
+                              if (showCrowdCard && crowd != null) ...[
                                 const SizedBox(height: 12),
                                 _buildCrowdCard(crowd, crowdKey!),
                               ],
@@ -340,28 +343,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildStatusCard(List<ScheduleBlock> blocks) {
     final bool hasOverride = UserStatusOverride.isActive;
-
-    if (blocks.isEmpty && !hasOverride) {
-      return _buildNoScheduleCard();
-    }
-
     final ScheduleBlock? active = ScheduleStore.currentBlockAt(_now);
     final ScheduleBlock? upcoming = ScheduleStore.nextBlockAfter(_now);
     final bool scheduleSaysOff = active != null;
 
-    // A self-reported status — either the user's own report, or a
-    // crowd card they confirmed as true — always wins over the
-    // schedule guess, in EITHER direction, until the next scheduled
-    // boundary resets it.
     final bool isOffNow = hasOverride
         ? UserStatusOverride.isOut
         : scheduleSaysOff;
 
     String subtitle;
     if (hasOverride) {
-      subtitle = isOffNow
-          ? "Based on what you reported — not your saved schedule."
-          : "Based on what you reported — not your saved schedule.";
+      subtitle = "Based on what you reported — not your saved schedule.";
     } else if (isOffNow && active != null) {
       final int minutesNow = _now.hour * 60 + _now.minute;
       final int minsLeft = active.endMinutes - minutesNow;
@@ -373,6 +365,8 @@ class _HomeScreenState extends State<HomeScreen> {
       final int minsUntil = upcoming.startMinutes - minutesNow;
       subtitle =
           'Next scheduled outage in ~$minsUntil min · ${upcoming.timeRangeLabel}';
+    } else if (blocks.isEmpty) {
+      subtitle = 'No outage schedule saved for your area';
     } else {
       subtitle = 'No more outages in your saved schedule for today';
     }
@@ -392,6 +386,14 @@ class _HomeScreenState extends State<HomeScreen> {
           ValueListenableBuilder<String>(
             valueListenable: AppLocation.utility,
             builder: (context, utility, _) {
+              final IconData statusIcon = isOffNow
+                  ? (utility == 'Gas'
+                      ? Icons.local_fire_department_rounded
+                      : Icons.flash_off_rounded)
+                  : (utility == 'Gas'
+                      ? Icons.local_fire_department_rounded
+                      : Icons.bolt_rounded);
+
               return Row(
                 children: [
                   Container(
@@ -401,7 +403,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
-                      isOffNow ? Icons.flash_off_rounded : Icons.bolt_rounded,
+                      statusIcon,
                       color: AppColors.white,
                       size: 28,
                     ),
@@ -450,17 +452,19 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // "X user(s) in your area say power is back/out" — shown to everyone
+  // "X user(s) in your area say power/gas is back/out" — shown to everyone
   // in the area EXCEPT whoever reported it (that's excluded upstream
   // in ReportsStore.watchCrowdSignal). Tapping True updates only this
   // account's own status; False (or ignoring it) leaves it unchanged.
   Widget _buildCrowdCard(CrowdSignal crowd, String key) {
+    final String utilityWord =
+        AppLocation.utility.value == 'Gas' ? 'Gas' : 'the power';
     final String peopleLabel = crowd.userCount == 1
         ? '1 user'
         : '${crowd.userCount} users';
     final String message = crowd.isOut
-        ? '$peopleLabel in your area say the power is OUT — is that true for you too?'
-        : '$peopleLabel in your area say the power is BACK — is that true for you too?';
+        ? '$peopleLabel in your area say $utilityWord is OUT — is that true for you too?'
+        : '$peopleLabel in your area say $utilityWord is BACK — is that true for you too?';
 
     return AppCard(
       padding: const EdgeInsets.all(16),
@@ -520,72 +524,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildNoScheduleCard() {
-    return AppCard(
-      padding: const EdgeInsets.all(22),
-      borderColor: AppColors.black,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: const BoxDecoration(
-                  color: AppColors.black,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.calendar_month_rounded,
-                  color: AppColors.white,
-                  size: 28,
-                ),
-              ),
-              const SizedBox(width: 16),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'No schedule saved yet',
-                      style: TextStyle(
-                        fontSize: 17.5,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.black,
-                      ),
-                    ),
-                    SizedBox(height: 2),
-                    Text(
-                      'Add the times you know your power usually goes out.',
-                      style: TextStyle(fontSize: 13.5, color: AppColors.grey),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                // AppCard's background stays white in dark mode, but the
-                // dark ColorScheme's default button foreground is white
-                // too — that made the icon/label invisible here. Force
-                // black since this button always sits on a white card.
-                foregroundColor: AppColors.black,
-                side: const BorderSide(color: AppColors.black, width: 1.5),
-              ),
-              onPressed: () => _goToSchedule(context),
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('Add your schedule'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildTimeline(BuildContext context, List<ScheduleBlock> blocks) {
     if (blocks.isEmpty) {
       return Padding(
@@ -599,6 +537,12 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       );
     }
+
+    final String utilityWord =
+        AppLocation.utility.value == 'Gas' ? 'Gas' : 'Power';
+    final IconData blockIcon = AppLocation.utility.value == 'Gas'
+        ? Icons.local_fire_department_rounded
+        : Icons.flash_off_rounded;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -619,8 +563,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   color: AppColors.black,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
-                  Icons.flash_off_rounded,
+                child: Icon(
+                  blockIcon,
                   color: AppColors.white,
                   size: 20,
                 ),
@@ -630,9 +574,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Power usually OFF',
-                      style: TextStyle(
+                    Text(
+                      '$utilityWord usually OFF',
+                      style: const TextStyle(
                         fontSize: 15.5,
                         fontWeight: FontWeight.w700,
                         color: AppColors.black,

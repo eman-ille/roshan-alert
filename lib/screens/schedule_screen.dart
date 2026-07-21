@@ -2,12 +2,11 @@ import 'package:flutter/material.dart';
 import '/Helping_Files/app_theme.dart';
 import '/Helping_Files/app_card.dart';
 import '/Helping_Files/bottom_nav.dart';
+import '/Helping_Files/app_location.dart';
 import '/Helping_Files/schedule_store.dart';
 
 /// Where the user builds THEIR OWN outage schedule — from experience or
-/// their DISCO's notice. This is deliberately framed as "your saved
-/// schedule", never as something the app detected live, since we have
-/// no real-time data source for that (see conversation history).
+/// their DISCO's notice.
 class ScheduleScreen extends StatefulWidget {
   const ScheduleScreen({super.key});
 
@@ -31,38 +30,48 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Your Schedule')),
       body: SafeArea(
-        child: ValueListenableBuilder<List<ScheduleBlock>>(
-          valueListenable: ScheduleStore.blocks,
-          builder: (context, blocks, _) {
-            if (blocks.isEmpty) {
-              return _buildEmptyState(context);
-            }
-            return Column(
-              children: [
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-                    children: [
-                      _buildIntro(),
-                      const SizedBox(height: 18),
-                      ...blocks.map((b) => _buildBlockCard(b)),
-                    ],
-                  ),
-                ),
-                // The only "Add outage time" button now — there used
-                // to be a second one floating over the bottom-right
-                // corner, which was redundant with this one.
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
-                  child: Center(
-                    child: ElevatedButton.icon(
-                      onPressed: _addBlock,
-                      icon: const Icon(Icons.add_rounded),
-                      label: const Text('Add outage time'),
+        child: ValueListenableBuilder<String>(
+          valueListenable: AppLocation.utility,
+          builder: (context, utility, _) {
+            final String utilityWord = utility == 'Gas' ? 'gas' : 'power';
+            final String titleWord = utility == 'Gas' ? 'Gas' : 'Power';
+            final IconData blockIcon = utility == 'Gas'
+                ? Icons.local_fire_department_rounded
+                : Icons.flash_off_rounded;
+
+            return ValueListenableBuilder<List<ScheduleBlock>>(
+              valueListenable: ScheduleStore.blocks,
+              builder: (context, blocks, _) {
+                if (blocks.isEmpty) {
+                  return _buildEmptyState(context, utilityWord);
+                }
+                return Column(
+                  children: [
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+                        children: [
+                          _buildIntro(utilityWord),
+                          const SizedBox(height: 18),
+                          ...blocks.map(
+                            (b) => _buildBlockCard(b, titleWord, blockIcon),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ),
-              ],
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+                      child: Center(
+                        child: ElevatedButton.icon(
+                          onPressed: _addBlock,
+                          icon: const Icon(Icons.add_rounded),
+                          label: const Text('Add outage time'),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
             );
           },
         ),
@@ -71,15 +80,19 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     );
   }
 
-  Widget _buildIntro() {
-    return const Text(
-      "These are times YOU'VE told us your power usually goes out. "
+  Widget _buildIntro(String utilityWord) {
+    return Text(
+      "These are times YOU'VE told us your $utilityWord usually goes out. "
       "We'll remind you before each one — add every block you know about.",
-      style: TextStyle(fontSize: 13.5, color: AppColors.grey, height: 1.4),
+      style: const TextStyle(fontSize: 13.5, color: AppColors.grey, height: 1.4),
     );
   }
 
-  Widget _buildBlockCard(ScheduleBlock block) {
+  Widget _buildBlockCard(
+    ScheduleBlock block,
+    String titleWord,
+    IconData blockIcon,
+  ) {
     return AppCard(
       margin: const EdgeInsets.only(bottom: 12),
       child: Row(
@@ -90,8 +103,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
               color: AppColors.black,
               shape: BoxShape.circle,
             ),
-            child: const Icon(
-              Icons.flash_off_rounded,
+            child: Icon(
+              blockIcon,
               color: AppColors.white,
               size: 20,
             ),
@@ -101,9 +114,9 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Power usually OFF',
-                  style: TextStyle(
+                Text(
+                  '$titleWord usually OFF',
+                  style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
                     color: AppColors.black,
@@ -133,7 +146,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     );
   }
 
-  Widget _buildEmptyState(BuildContext context) {
+  Widget _buildEmptyState(BuildContext context, String utilityWord) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -163,11 +176,11 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
               ),
             ),
             const SizedBox(height: 6),
-            const Text(
-              "Add the times you know your power usually goes out, "
+            Text(
+              "Add the times you know your $utilityWord usually goes out, "
               "and we'll remind you before each one.",
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 13.5,
                 color: AppColors.grey,
                 height: 1.4,
