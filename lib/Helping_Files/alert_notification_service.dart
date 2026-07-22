@@ -2,8 +2,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
+import 'browser_notifier_stub.dart'
+    if (dart.library.html) 'browser_notifier_web.dart';
 import 'alert_store.dart';
 import 'app_theme.dart';
 
@@ -41,7 +41,9 @@ class AlertNotificationService {
     if (kIsWeb) return;
     if (_isPluginInitialized) return;
 
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -64,16 +66,7 @@ class AlertNotificationService {
     required String message,
   }) async {
     if (kIsWeb) {
-      try {
-        if (html.Notification.permission == 'granted') {
-          html.Notification(title, body: message);
-        } else if (html.Notification.permission != 'denied') {
-          final permission = await html.Notification.requestPermission();
-          if (permission == 'granted') {
-            html.Notification(title, body: message);
-          }
-        }
-      } catch (_) {}
+      await showBrowserNotification(title, message);
       return;
     }
 
@@ -113,7 +106,8 @@ class AlertNotificationService {
 
     _autoDismissTimer?.cancel();
 
-    final alertIcon = icon ??
+    final alertIcon =
+        icon ??
         (utility.toLowerCase() == 'gas'
             ? Icons.local_fire_department_rounded
             : Icons.bolt_rounded);
@@ -189,11 +183,7 @@ class HeadsUpAlertBanner extends StatelessWidget {
                       color: Colors.amber.shade700,
                       shape: BoxShape.circle,
                     ),
-                    child: Icon(
-                      alert.icon,
-                      color: AppColors.white,
-                      size: 20,
-                    ),
+                    child: Icon(alert.icon, color: AppColors.white, size: 20),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -222,7 +212,11 @@ class HeadsUpAlertBanner extends StatelessWidget {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close_rounded, color: AppColors.white, size: 18),
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: AppColors.white,
+                      size: 18,
+                    ),
                     onPressed: AlertNotificationService.dismissCurrentAlert,
                   ),
                 ],
