@@ -2,7 +2,6 @@ const admin = require("firebase-admin");
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
-const https = require("https");
 
 const app = express();
 app.use(express.json());
