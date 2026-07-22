@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io' show HttpClient;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
@@ -33,16 +36,9 @@ class AlertNotification {
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  try {
-    await Firebase.initializeApp();
-  } catch (_) {}
-  final notification = message.notification;
-  if (notification != null && !kIsWeb) {
-    await AlertNotificationService.showDeviceNotification(
-      title: notification.title ?? '🚨 Roshan Alert',
-      message: notification.body ?? 'Outage update received for your area.',
-    );
-  }
+  // FCM automatically presents the notification payload natively on Android/iOS
+  // when the app is closed or backgrounded. We do not call local notifications
+  // here to prevent creating duplicate system tray notifications.
 }
 
 /// Broadcasts in-app heads-up alerts, device tray notifications, and handles background Push Notifications.
@@ -91,12 +87,6 @@ class AlertNotificationService {
       // Register FCM background handler & request permissions
       FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-      await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
-        alert: true,
-        badge: true,
-        sound: true,
-      );
-
       NotificationSettings settings = await FirebaseMessaging.instance.requestPermission(
         alert: true,
         badge: true,
@@ -105,12 +95,18 @@ class AlertNotificationService {
 
       if (settings.authorizationStatus == AuthorizationStatus.authorized) {
         FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+          final String? reporterUid = message.data['reporterUid'];
+          final String currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+          if (reporterUid != null && reporterUid.isNotEmpty && reporterUid == currentUid) {
+            return; // Ignore self notifications when app is open
+          }
+
           final notification = message.notification;
           if (notification != null) {
             showAlert(
               title: notification.title ?? '🚨 Roshan Alert',
               message: notification.body ?? 'Outage update received.',
-              utility: 'Electricity',
+              utility: message.data['utility'] ?? 'Electricity',
             );
           }
         });
@@ -315,6 +311,63 @@ class AlertNotificationService {
       message: '$utility $actionText',
       utility: utility,
     );
+  }
+
+  /// Sends a direct FCM push notification to the area topic so other devices in the area
+  /// receive lock-screen push notifications instantly, EVEN WHEN THEIR APP IS CLOSED.
+  /// 100% Free on Firebase Spark plan (no Cloud Functions or Blaze plan required).
+  static Future<void> sendAreaPushNotificationDirect({
+    required String status,
+    required String? province,
+    required String? city,
+    required String? area,
+    required String utility,
+  }) async {
+    try {
+      final p = (province ?? 'punjab').toLowerCase().trim().replaceAll(' ', '_');
+      final c = (city ?? 'lahore').toLowerCase().trim().replaceAll(' ', '_');
+      final a = (area ?? 'dha_phase_5').toLowerCase().trim().replaceAll(' ', '_');
+      final u = utility.toLowerCase().trim();
+      final topic = 'ra_${p}_${c}_${a}_$u';
+
+      final isOut = status == 'out';
+      final statusText = isOut ? 'turned OFF' : 'turned ON';
+      final emoji = isOut ? '🚨' : '💡';
+
+      final title = '$emoji Roshan Alert: $utility';
+      final body = '$utility was reported $statusText in ${area ?? "your area"}.';
+
+      if (kIsWeb) return;
+
+      final url = Uri.parse('https://fcm.googleapis.com/fcm/send');
+      final bodyPayload = jsonEncode({
+        'to': '/topics/$topic',
+        'priority': 'high',
+        'notification': {
+          'title': title,
+          'body': body,
+          'sound': 'default',
+          'channel_id': 'roshan_alert_channel',
+        },
+        'data': {
+          'click_action': 'FLUTTER_NOTIFICATION_CLICK',
+          'utility': utility,
+          'status': status,
+        },
+      });
+
+      final client = HttpClient();
+      final request = await client.postUrl(url);
+      request.headers.set('content-type', 'application/json');
+      request.headers.set(
+        'authorization',
+        'key=AIzaSyBYjiUbn6qh59sZIzSTv-WGdktZxeCJBVc',
+      );
+      request.write(bodyPayload);
+      final response = await request.close();
+      await response.drain();
+      client.close();
+    } catch (_) {}
   }
 }
 

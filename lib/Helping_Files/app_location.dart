@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'address_store.dart';
 import 'schedule_store.dart';
 import 'self_status_store.dart';
+import 'alert_notification_service.dart';
 
 /// Single source of truth for the user's currently selected location
 /// AND utility type (Electricity / Gas), picked once during onboarding.
@@ -83,6 +84,8 @@ class AppLocation {
       'area': area,
     });
 
+    await AlertNotificationService.syncAreaTopicSubscription();
+
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
     try {
@@ -118,6 +121,7 @@ class AppLocation {
     if (area != null && city != null) {
       current.value = '$area, $city';
     }
+    await AlertNotificationService.syncAreaTopicSubscription();
   }
 
   /// Called at startup right after sign-in is confirmed, ONLY if the

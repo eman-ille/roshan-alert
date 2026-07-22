@@ -49,6 +49,8 @@ Future<void> main() async {
     initialRoute = AppLocation.hasSavedAddress ? '/home' : '/onboarding';
   }
 
+  await AlertNotificationService.syncAreaTopicSubscription();
+
   runApp(RoshanAlertApp(initialRoute: initialRoute));
 }
 
