@@ -37,6 +37,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   StreamSubscription<User?>? _authSub;
 
+  DateTime _streamConnectTime = DateTime.now();
+
   void _reconnectCrowdStream() {
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
     if (uid.isEmpty) return; // Wait for Firebase Auth to resolve
@@ -54,6 +56,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // priming state — don't carry over the old key.
     _crowdStreamPrimed = false;
     _lastAlertedCrowdKey = null;
+    _streamConnectTime = DateTime.now();
 
     _crowdSub?.cancel();
     _crowdSub = ReportsStore.watchCrowdSignal(utility: utility, currentUid: uid)
@@ -66,19 +69,25 @@ class _HomeScreenState extends State<HomeScreen> {
                       '${(signal.reporterUids.toList()..sort()).join(',')}'
                 : null;
 
-            // First snapshot after (re)connecting: just record the
+            // First snapshot after (re)connecting: record the
             // current state silently, don't alert on it. This avoids
             // popping a banner for a report that's been sitting there
-            // for a while and isn't actually new news.
+            // before app was loaded/reloaded.
             if (!_crowdStreamPrimed) {
               _crowdStreamPrimed = true;
               _lastAlertedCrowdKey = currentKey;
               return;
             }
 
+            // Only alert if:
+            // 1. Signal exists and has active reports.
+            // 2. Signal key is different from the last alerted key.
+            // 3. The latest report timestamp is newer than when this stream connected
+            //    (preventing reload popups for pre-existing reports).
             if (signal != null &&
                 signal.userCount > 0 &&
-                currentKey != _lastAlertedCrowdKey) {
+                currentKey != _lastAlertedCrowdKey &&
+                signal.latestAt.isAfter(_streamConnectTime)) {
               _lastAlertedCrowdKey = currentKey;
               final String statusText = signal.isOut ? 'is OFF' : 'is ON';
               final String userPrefix = signal.userCount == 1
@@ -92,6 +101,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   utility: utility,
                 );
               });
+            } else if (signal != null && signal.userCount > 0) {
+              // Update last key without popping alert if report is older than app reload
+              _lastAlertedCrowdKey = currentKey;
             }
           },
           onError: (_) {

@@ -13,19 +13,15 @@ class LogoBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? AppColors.white : AppColors.black;
-    final textColor = isDark ? AppColors.black : AppColors.white;
-
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: bgColor,
+        color: const Color(0xFF171B24),
         shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
+            color: Colors.black.withValues(alpha: 0.15),
             blurRadius: 6,
             offset: const Offset(0, 2),
           ),
@@ -43,7 +39,7 @@ class LogoBadge extends StatelessWidget {
               child: Text(
                 'RA',
                 style: TextStyle(
-                  color: textColor,
+                  color: AppColors.white,
                   fontWeight: FontWeight.w800,
                   fontSize: size * 0.32,
                 ),
