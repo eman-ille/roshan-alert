@@ -246,7 +246,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// Status card — title line ("<Utility> should be ON/OFF now"), plus
+  /// Status card — title line ("`Utility` should be ON/OFF now"), plus
   /// a countdown subtitle ONLY when:
   ///   - it's currently OFF, AND
   ///   - that OFF is coming from the SAVED SCHEDULE (not a self-report)
@@ -425,24 +425,27 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     final String hoursLabel = _formatDurationMinutes(totalMinutesOff);
 
-    return Row(
-      children: [
-        Expanded(
-          child: _statCard(
-            icon: Icons.timer_outlined,
-            value: blocks.isEmpty ? '—' : hoursLabel,
-            label: 'Off per day (saved)',
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: _statCard(
+              icon: Icons.timer_outlined,
+              value: blocks.isEmpty ? '—' : hoursLabel,
+              label: 'Off per day (saved)',
+            ),
           ),
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: _statCard(
-            icon: Icons.event_available_rounded,
-            value: '${blocks.length}',
-            label: 'Saved outage blocks',
+          const SizedBox(width: 14),
+          Expanded(
+            child: _statCard(
+              icon: Icons.event_available_rounded,
+              value: '${blocks.length}',
+              label: 'Saved outage blocks',
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -454,6 +457,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Container(
             padding: const EdgeInsets.all(8),
@@ -465,18 +469,23 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Icon(icon, color: AppColors.black, size: 20),
           ),
           const SizedBox(height: 10),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: AppColors.black,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: const TextStyle(fontSize: 12.5, color: AppColors.grey),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.black,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                style: const TextStyle(fontSize: 12.5, color: AppColors.grey),
+              ),
+            ],
           ),
         ],
       ),

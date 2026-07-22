@@ -20,14 +20,36 @@ class LogoBadge extends StatelessWidget {
     return Container(
       width: size,
       height: size,
-      decoration: BoxDecoration(color: bgColor, shape: BoxShape.circle),
+      decoration: BoxDecoration(
+        color: bgColor,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       alignment: Alignment.center,
-      child: Text(
-        'RA',
-        style: TextStyle(
-          color: textColor,
-          fontWeight: FontWeight.w800,
-          fontSize: size * 0.32,
+      child: ClipOval(
+        child: Image.asset(
+          'assets/images/app_logo.jpg',
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            return Center(
+              child: Text(
+                'RA',
+                style: TextStyle(
+                  color: textColor,
+                  fontWeight: FontWeight.w800,
+                  fontSize: size * 0.32,
+                ),
+              ),
+            );
+          },
         ),
       ),
     );

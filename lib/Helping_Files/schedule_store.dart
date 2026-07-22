@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'app_location.dart';
+import 'alert_notification_service.dart';
 
 /// One recurring daily outage block, e.g. 5:00 PM – 7:00 PM.
 /// Times are stored as "minutes since midnight" (0–1440) so comparing
@@ -144,6 +145,8 @@ class ScheduleStore {
       }
     } catch (_) {
       // Offline: keep localBlocks
+    } finally {
+      AlertNotificationService.scheduleOutageBlockNotifications(blocks.value, activeUtility);
     }
   }
 
@@ -170,6 +173,7 @@ class ScheduleStore {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     final activeUtility = _currentUtility();
     await _saveLocal(uid, activeUtility);
+    AlertNotificationService.scheduleOutageBlockNotifications(blocks.value, activeUtility);
     if (uid == null || uid.isEmpty) return;
     try {
       // Save under location-specific field so each area has its own

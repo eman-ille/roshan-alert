@@ -7,6 +7,7 @@ import 'Helping_Files/app_location.dart';
 import 'Helping_Files/schedule_store.dart';
 import 'Helping_Files/self_status_store.dart';
 import 'Helping_Files/alert_store.dart';
+import 'Helping_Files/alert_notification_service.dart';
 import 'screens/home_screen.dart';
 import 'screens/report_screen.dart';
 import 'screens/schedule_screen.dart';
@@ -19,6 +20,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await AlertNotificationService.initLocalNotifications();
   await AppLocation.restore();
   await AppThemeController.restore();
   await ScheduleStore.restore();
