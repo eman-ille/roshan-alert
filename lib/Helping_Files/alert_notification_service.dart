@@ -298,19 +298,6 @@ class AlertNotificationService {
     currentAlert.value = null;
   }
 
-  static void triggerOutageReportAlert({
-    required String status,
-    required String utility,
-    required String location,
-  }) {
-    final String actionText = status == 'out' ? 'turned OFF' : 'turned ON';
-
-    showAlert(
-      title: '🚨 Roshan Alert',
-      message: '$utility $actionText',
-      utility: utility,
-    );
-  }
 
   /// Sends a direct FCM push notification to the area topic so other devices in the area
   /// receive lock-screen push notifications instantly, EVEN WHEN THEIR APP IS CLOSED.
