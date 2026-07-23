@@ -116,13 +116,23 @@ class AlertNotificationService {
     } catch (_) {}
   }
 
+  static String _sanitizeTopicSegment(String? input, String fallback) {
+    final s = (input == null || input.trim().isEmpty) ? fallback : input.trim();
+    final cleaned = s
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+    return cleaned.isEmpty ? fallback : cleaned;
+  }
+
   /// Syncs area-based FCM topic subscription so background notifications trigger when another user in the area reports.
   static Future<void> syncAreaTopicSubscription() async {
     if (kIsWeb) return;
-    final p = (AppLocation.province ?? 'punjab').toLowerCase().replaceAll(' ', '_');
-    final c = (AppLocation.city ?? 'lahore').toLowerCase().replaceAll(' ', '_');
-    final a = (AppLocation.area ?? 'dha_phase_5').toLowerCase().replaceAll(' ', '_');
-    final u = AppLocation.utility.value.toLowerCase();
+    final p = _sanitizeTopicSegment(AppLocation.province, 'punjab');
+    final c = _sanitizeTopicSegment(AppLocation.city, 'lahore');
+    final a = _sanitizeTopicSegment(AppLocation.area, 'dha_phase_5');
+    final u = _sanitizeTopicSegment(AppLocation.utility.value, 'electricity');
     final newTopic = 'ra_${p}_${c}_${a}_$u';
 
     if (_subscribedTopic == newTopic) return;
@@ -310,10 +320,10 @@ class AlertNotificationService {
     required String utility,
   }) async {
     try {
-      final p = (province ?? 'punjab').toLowerCase().trim().replaceAll(' ', '_');
-      final c = (city ?? 'lahore').toLowerCase().trim().replaceAll(' ', '_');
-      final a = (area ?? 'dha_phase_5').toLowerCase().trim().replaceAll(' ', '_');
-      final u = utility.toLowerCase().trim();
+      final p = _sanitizeTopicSegment(province, 'punjab');
+      final c = _sanitizeTopicSegment(city, 'lahore');
+      final a = _sanitizeTopicSegment(area, 'dha_phase_5');
+      final u = _sanitizeTopicSegment(utility, 'electricity');
       final topic = 'ra_${p}_${c}_${a}_$u';
 
       final isOut = status == 'out';

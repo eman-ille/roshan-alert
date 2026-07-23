@@ -80,10 +80,18 @@ db.collection("reports").onSnapshot(
           return;
         }
 
-        const p = (data.province || "punjab").toLowerCase().trim().replace(/\s+/g, "_");
-        const c = (data.city || "lahore").toLowerCase().trim().replace(/\s+/g, "_");
-        const a = (data.area || "dha_phase_5").toLowerCase().trim().replace(/\s+/g, "_");
-        const u = (data.utility || "electricity").toLowerCase().trim().replace(/\s+/g, "_");
+        const sanitize = (str) =>
+          (str || "")
+            .toLowerCase()
+            .trim()
+            .replace(/[^a-z0-9]/g, "_")
+            .replace(/_+/g, "_")
+            .replace(/^_+|_+$/g, "");
+
+        const p = sanitize(data.province || "punjab");
+        const c = sanitize(data.city || "lahore");
+        const a = sanitize(data.area || "dha_phase_5");
+        const u = sanitize(data.utility || "electricity");
 
         const topic = `ra_${p}_${c}_${a}_${u}`;
 
